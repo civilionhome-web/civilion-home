@@ -15,7 +15,7 @@ It runs in the browser and clients can add it to their home screen, where it ope
 | Part | What it does | Cost to start |
 |---|---|---|
 | **Supabase** (database, logins, file storage, live chat) | Holds all the data and photos. Each client only ever sees their own projects (rules are inside the database). | Free plan to start. The free plan pauses after a week with no activity and holds 1 GB of files, so move to Pro (about US$25/month) once real clients are using it. |
-| **Netlify** (website hosting) | Puts the app online at your own address, e.g. `home.civilionbuilders.com` | Free plan is fine |
+| **GitHub Pages** (website hosting) | Puts the app online at your own address, e.g. `home.civilionbuilders.com` | Free with a public repository |
 | **Twilio** (only for WhatsApp OTP) | Sends the sign-in code on WhatsApp | Pay per message, plus Meta must approve your WhatsApp sender. Until that's ready, use email codes (free). |
 
 Files in this folder:
@@ -50,7 +50,7 @@ You or any web developer can follow this. No server to look after.
 
 ### 3. Sign-in settings in Supabase
 
-**Authentication → URL Configuration**: set **Site URL** to your app's address (after step 6), e.g. `https://home.civilionbuilders.com`.
+**Authentication → URL Configuration**: set **Site URL** to your app's address (after step 6), e.g. `https://home.civilionbuilders.com` or `https://YOUR-USERNAME.github.io/civilion-home/`.
 
 **For email codes:**
 - **Authentication → Email Templates → Magic Link**: make sure the message shows the code. Add a line like `Your Civilion Home code is {{ .Token }}`.
@@ -70,15 +70,30 @@ Put two image files in the `public` folder:
 
 Without these, the app shows the word **CIVILION**. To change the home-screen app icon, replace the three PNG files in `public/icons/` (192×192, 512×512, and a 512×512 version with extra space around the logo).
 
-### 6. Put it online (Netlify)
+### 6. Put it online with GitHub Pages
 
-1. Put this folder in a GitHub repository (private is fine).
-2. On **netlify.com** → **Add new site → Import from GitHub** → pick the repository.
-   Build command: `npm run build`. Publish directory: `dist`.
-3. **Site settings → Environment variables**: add `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_CLIENT_LOGIN` (same values as your `.env`).
-4. Deploy. Then **Domain settings** → add `home.civilionbuilders.com` (or any address you like) and follow the DNS instructions.
+The folder already has a workflow file (`.github/workflows/deploy.yml`). Every time you push to the `main` branch, GitHub builds the app and publishes it.
 
-To try it on your own computer first: install Node.js, then run `npm install` and `npm run dev` in this folder.
+1. On **github.com → New repository**, name it `civilion-home`. Leave it **empty** (no README, no .gitignore).
+   - On the free GitHub plan, Pages only works if the repository is **Public**. That makes the *code* visible, but none of your clients' data: that stays in Supabase behind its security rules. To keep the code private, you need GitHub Pro.
+2. Upload the code. Pick one:
+   - **Website:** in the new repository, click **uploading an existing file**. Drag in everything *inside* the `civilion-home` folder (including the hidden `.github` folder, which needs to be visible in your file browser) and commit.
+   - **Command line:** in this folder, run
+     ```
+     git remote add origin https://github.com/YOUR-USERNAME/civilion-home.git
+     git push -u origin main
+     ```
+3. Go to **Settings → Secrets and variables → Actions**.
+   - Tab **Secrets**, then **New repository secret**: add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+   - Tab **Variables** *(optional)*: add `VITE_CLIENT_LOGIN` = `whatsapp` once WhatsApp OTP is set up. Without it, the app uses email codes.
+4. Go to **Settings → Pages → Build and deployment → Source:** choose **GitHub Actions**.
+5. Go to **Actions → Deploy to GitHub Pages → Run workflow** (or just push any change). After about 2 minutes the app is live at
+   `https://YOUR-USERNAME.github.io/civilion-home/`
+6. *(Recommended)* Use your own address: **Settings → Pages → Custom domain**, enter `home.civilionbuilders.com`. At your domain registrar, add a **CNAME** record `home` pointing to `YOUR-USERNAME.github.io`. Then tick **Enforce HTTPS**, and run the workflow again so the app switches to the new address.
+
+From then on, any change you push goes live automatically.
+
+*Prefer Netlify?* That also works: import the same GitHub repository there with build command `npm run build` and publish folder `dist`.
 
 ### 7. Make yourself the admin
 
