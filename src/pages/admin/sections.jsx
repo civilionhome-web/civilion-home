@@ -27,6 +27,7 @@ function useAction(setError) {
 }
 
 const today = () => new Date().toISOString().slice(0, 10);
+const MISSING = { background: '#fff6e5', borderColor: '#f0d49a' };
 
 // ---------------------------------------------------------------- Clients
 function clientInvite(r, appUrl) {
@@ -149,6 +150,17 @@ export function StagesSection({ project, reloadProject, say }) {
   const [newDates, setNewDates] = useState({ start: '', end: '' });
 
   const save = (id, patch) => run(() => must(supabase.from('stages').update(patch).eq('id', id))).then(reload);
+  // Dates save when you leave the box (not on every key), and only a full, sensible date is accepted
+  async function saveDate(s, field, value) {
+    const v = value || null;
+    if (v === s[field]) return;
+    if (v && !/^(19|20)\d\d-\d\d-\d\d$/.test(v)) { setError(new Error('Please enter a full date with a 4-digit year.')); return; }
+    const start = field === 'start_date' ? v : s.start_date;
+    const end = field === 'end_date' ? v : s.end_date;
+    if (start && end && end < start) { setError(new Error(`"${s.name}": end date is before the start date.`)); return; }
+    const ok = await run(() => must(supabase.from('stages').update({ [field]: v }).eq('id', s.id)));
+    if (ok) { say('Date saved'); reload(); }
+  }
 
   async function makeCurrent(idx) {
     const ok = await run(async () => {
@@ -182,8 +194,10 @@ export function StagesSection({ project, reloadProject, say }) {
   }
 
   if (!rows) return <Spinner />;
+  const noDates = rows.filter((s) => !s.start_date || !s.end_date).length;
   return (
     <>
+      {noDates > 0 && <div className="card small" style={{ background: '#fff6e5', borderColor: '#f0d49a' }}>{noDates} of {rows.length} stages still need a start or end date (shown in yellow). Clients see “Dates to be confirmed” for these.</div>}
       <div className="small muted">Set the planned start and end date of each stage; clients see them on their Progress screen. The note is for extra detail ("curing till 20 Nov"). "Make current" ticks off every stage before it.</div>
       <div className="table-wrap">
         <table className="table">
@@ -193,10 +207,10 @@ export function StagesSection({ project, reloadProject, say }) {
               <tr key={s.id}>
                 <td>{i + 1}</td>
                 <td><input className="input" style={{ height: 38, fontSize: 14, minWidth: 180 }} defaultValue={s.name} aria-label="Stage name" onBlur={(e) => e.target.value !== s.name && save(s.id, { name: e.target.value })} /></td>
-                <td><input className="input" type="date" style={{ height: 38, fontSize: 13, width: 138 }} defaultValue={s.start_date || ''} aria-label="Start date"
-                  onChange={(e) => (e.target.value || null) !== s.start_date && save(s.id, { start_date: e.target.value || null })} /></td>
-                <td><input className="input" type="date" style={{ height: 38, fontSize: 13, width: 138 }} defaultValue={s.end_date || ''} aria-label="End date" min={s.start_date || undefined}
-                  onChange={(e) => (e.target.value || null) !== s.end_date && save(s.id, { end_date: e.target.value || null })} /></td>
+                <td><input className="input" type="date" style={{ height: 38, fontSize: 13, width: 138, ...(s.start_date ? {} : MISSING) }} defaultValue={s.start_date || ''} aria-label="Start date"
+                  onBlur={(e) => saveDate(s, 'start_date', e.target.value)} /></td>
+                <td><input className="input" type="date" style={{ height: 38, fontSize: 13, width: 138, ...(s.end_date ? {} : MISSING) }} defaultValue={s.end_date || ''} aria-label="End date" min={s.start_date || undefined}
+                  onBlur={(e) => saveDate(s, 'end_date', e.target.value)} /></td>
                 <td><input className="input" style={{ height: 38, fontSize: 14, minWidth: 160 }} defaultValue={s.note} aria-label="Note" onBlur={(e) => e.target.value !== s.note && save(s.id, { note: e.target.value })} /></td>
                 <td>
                   <select className="select" style={{ height: 38, fontSize: 14, width: 130 }} value={s.status} aria-label="Status" onChange={(e) => save(s.id, { status: e.target.value })}>
