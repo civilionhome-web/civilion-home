@@ -1,6 +1,6 @@
 // Civilion Home service worker: lets the app open fast and be installed.
 // Data (bills, chat, photos) always comes live from the server; only the app shell is cached.
-const CACHE = 'civilion-shell-v2';
+const CACHE = 'civilion-shell-v3';
 const BASE = new URL('./', self.location).pathname; // "/" or "/civilion-home/"
 
 self.addEventListener('install', (e) => {
