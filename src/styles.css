@@ -49,7 +49,7 @@ h1, h2, h3 { font-family: var(--display); margin: 0; }
 .icon-btn { width: 44px; height: 44px; display: grid; place-items: center; border: 0; background: transparent; color: inherit; border-radius: 22px; cursor: pointer; text-decoration: none; flex: none; }
 .content { padding: 0 16px; display: flex; flex-direction: column; gap: 12px; }
 
-.tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; background: #fff; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding: 6px 0 calc(10px + var(--safe-bottom)); z-index: 20; }
+.tabbar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px; background: #fff; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 6px 0 calc(10px + var(--safe-bottom)); z-index: 20; }
 .tabbar a { text-decoration: none; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; font-weight: 600; min-height: 48px; justify-content: center; position: relative; }
 .tabbar a.active { color: var(--maroon); }
 .tabbar .dot { position: absolute; top: 6px; left: calc(50% + 8px); width: 8px; height: 8px; border-radius: 4px; background: var(--maroon); }
@@ -219,3 +219,8 @@ h1, h2, h3 { font-family: var(--display); margin: 0; }
 .admin .chat-wrap { height: 70dvh; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; background: var(--bg); }
 .admin .chat-wrap .composer { position: static; padding-bottom: 12px; }
 .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 10px 16px; border-radius: 10px; font-size: 14px; z-index: 80; }
+
+/* ---------- Documents ---------- */
+.doc-badge { flex: none; width: 44px; height: 44px; border-radius: 10px; background: var(--maroon-tint); color: var(--maroon); display: grid; place-items: center; font: 700 11px var(--display); letter-spacing: 0.03em; }
+.doc-open { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 4px 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; color: inherit; overflow-wrap: anywhere; }
+.doc-open:hover span:first-child { color: var(--maroon); }
