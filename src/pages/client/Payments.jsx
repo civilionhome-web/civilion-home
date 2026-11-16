@@ -5,18 +5,21 @@ import { inr, lakhs, money, shortDate, longDate } from '../../lib/format';
 import { openFile } from '../../lib/files';
 import { useInrRate } from '../../lib/fx';
 import { Spinner, Sheet } from '../../components/ui';
+import { loadVariations } from '../../lib/variations';
 
 const pad = (n) => String(n).padStart(2, '0');
 
 export default function Payments() {
   const { project } = useProject();
   const [bills, setBills] = useState(null);
+  const [vo, setVo] = useState({ total: 0, items: [] });
   const [howTo, setHowTo] = useState(false);
   const rate = useInrRate(project.client_currency);
 
   useEffect(() => {
     supabase.from('bills').select('*').eq('project_id', project.id).order('number', { ascending: false })
       .then(({ data }) => setBills(data || []));
+    loadVariations(project.id).then(setVo);
   }, [project.id]);
 
   if (!bills) return <Spinner />;
@@ -24,8 +27,9 @@ export default function Payments() {
   const paid = sum('paid');
   const due = sum('due');
   const contract = Number(project.contract_amount) || 0;
-  const remaining = Math.max(0, contract - paid - due);
-  const pct = (v) => (contract > 0 ? Math.min(100, (v / contract) * 100) : 0);
+  const total = contract + vo.total;
+  const remaining = Math.max(0, total - paid - due);
+  const pct = (v) => (total > 0 ? Math.min(100, (v / total) * 100) : 0);
   const dueBills = bills.filter((b) => b.status === 'due');
   const paidBills = bills.filter((b) => b.status === 'paid');
   const upcoming = bills.filter((b) => b.status === 'upcoming');
@@ -37,6 +41,7 @@ export default function Payments() {
         {contract > 0 && (
           <div className="sub" style={{ fontSize: 13.5 }}>
             Contract {inr(contract)} incl. GST{Number(project.boq_amount) > 0 ? ` · BOQ ${inr(project.boq_amount)}` : ''}
+            {vo.total !== 0 && <><br />Variations {vo.total > 0 ? '+' : ''}{inr(vo.total)} · <b>Total {inr(total)}</b></>}
           </div>
         )}
       </div>
