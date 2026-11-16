@@ -7,6 +7,7 @@ const paths = {
   progress: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />,
   payments: <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></>,
   chat: <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />,
+  docs: <><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
   back: <path d="M15 6l-6 6 6 6" />,
   chevron: <path d="M9 6l6 6-6 6" />,
   bell: <><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10 21h4" /></>,
@@ -58,6 +59,7 @@ export function TabBar({ chatDot }) {
     { to: '/', label: 'Home', icon: 'home', end: true },
     { to: '/progress', label: 'Progress', icon: 'progress' },
     { to: '/payments', label: 'Payments', icon: 'payments' },
+    { to: '/documents', label: 'Documents', icon: 'docs' },
     { to: '/chat', label: 'Chat', icon: 'chat' },
   ];
   return (
