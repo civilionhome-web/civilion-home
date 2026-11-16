@@ -604,7 +604,7 @@ export function DecisionsSection({ project, say }) {
             <div className="form-grid">
               <label className="field"><span>Name</span><input className="input" placeholder="Kajaria matt, Ivory" value={o.name} onChange={(e) => setOpt(i, 'name', e.target.value)} /></label>
               <label className="field"><span>Detail</span><input className="input" placeholder="800 × 800 mm · in BOQ item F1" value={o.detail} onChange={(e) => setOpt(i, 'detail', e.target.value)} /></label>
-              <label className="field"><span>Extra cost ₹ (0 = none, minus = saving)</span><input className="input" type="number" step="any" value={o.cost_delta} onChange={(e) => setOpt(i, 'cost_delta', e.target.value)} /></label>
+              <label className="field"><span>Extra cost ₹ (0 = none, minus = saving; an extra cost is billed automatically, due the day the client approves)</span><input className="input" type="number" step="any" value={o.cost_delta} onChange={(e) => setOpt(i, 'cost_delta', e.target.value)} /></label>
               <label className="field"><span>Photo (optional)</span><input type="file" accept="image/*" onChange={(e) => setOpt(i, 'file', e.target.files?.[0] || null)} /></label>
             </div>
           </div>
