@@ -25,7 +25,7 @@ export default function Payments() {
   if (!bills) return <Spinner />;
   const sum = (st) => bills.filter((b) => b.status === st).reduce((s, b) => s + Number(b.amount), 0);
   const paid = sum('paid');
-  const due = sum('due');
+  const due = Math.max(0, sum('due'));
   const contract = Number(project.contract_amount) || 0;
   const total = contract + vo.total;
   const remaining = Math.max(0, total - paid - due);
@@ -57,7 +57,15 @@ export default function Payments() {
           </div>
         )}
 
-        {dueBills.map((b) => (
+        {dueBills.filter((b) => Number(b.amount) < 0).map((b) => (
+          <div key={b.id} className="card" style={{ background: '#eaf5ee', borderColor: '#b9dcc5' }}>
+            <div className="between"><span style={{ fontWeight: 600 }}>Bill {pad(b.number)} · {b.title}</span>{b.due_date && <span className="small green" style={{ fontWeight: 600 }}>{shortDate(b.due_date)}</span>}</div>
+            <span className="green" style={{ fontFamily: 'var(--display)', fontSize: 22, fontWeight: 800 }}>{inr(b.amount)}</span>
+            <div className="small" style={{ color: '#1d5c36' }}>{(b.details || '').includes('reduces') ? b.details : [b.details, 'This credit is reduced from the amount you pay.'].filter(Boolean).join(' · ')}</div>
+          </div>
+        ))}
+
+        {dueBills.filter((b) => Number(b.amount) >= 0).map((b) => (
           <div key={b.id} className="card warn">
             <div className="between"><span style={{ fontWeight: 600 }}>Bill {pad(b.number)} · {b.title}</span>{b.due_date && <span className="small amber" style={{ fontWeight: 600 }}>Due {shortDate(b.due_date)}</span>}</div>
             <div className="row" style={{ alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
