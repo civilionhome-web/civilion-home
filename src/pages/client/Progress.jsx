@@ -31,9 +31,10 @@ export default function Progress() {
   const stageNo = currentIdx >= 0 ? currentIdx + 1 : Math.min(doneCount + 1, stages.length);
   const sch = scheduleSummary(project, hindrances);
   const handover = sch.revised ? longDate(sch.revised) : project.handover_target;
-  const range = (st) => st.start_date || st.end_date
-    ? [st.start_date && shortDate(st.start_date), st.end_date && shortDate(st.end_date)].filter(Boolean).join(' – ')
-    : '';
+  const range = (st) => st.start_date && st.end_date ? `${shortDate(st.start_date)} – ${shortDate(st.end_date)}`
+    : st.start_date ? `From ${shortDate(st.start_date)}`
+    : st.end_date ? `Till ${shortDate(st.end_date)}`
+    : 'Dates to be confirmed';
   const schedColor = project.schedule_status === 'Delayed' ? '#9b1c1c' : project.schedule_status === 'Slight delay' ? 'var(--amber)' : 'var(--green)';
 
   return (
@@ -69,7 +70,7 @@ export default function Progress() {
                 <div className={`mark ${s.status}`}>{s.status === 'done' ? '✓' : i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 600, fontSize: 14.5 }}>{s.name}</div>
-                  {range(s) && <div className="small" style={{ color: 'var(--ink)' }}>{range(s)}</div>}
+                  <div className={`small${s.start_date || s.end_date ? '' : ' muted'}`} style={s.start_date || s.end_date ? { color: 'var(--ink)' } : { fontStyle: 'italic' }}>{range(s)}</div>
                   {s.note && <div className="small muted">{s.note}</div>}
                 </div>
                 <span className={`pill ${s.status}`}>{STATUS[s.status]}</span>
