@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { useProject } from './ClientLayout';
-import { greeting, lakhs, shortDate } from '../../lib/format';
+import { greeting, inr, lakhs, shortDate, longDate } from '../../lib/format';
+import { daysInclusive, todayStr } from '../../lib/schedule';
+import { LogEntry } from './SiteLog';
 import { Icon, Logo, Photo, Lightbox } from '../../components/ui';
 
 export default function Home() {
@@ -21,15 +23,20 @@ export default function Home() {
       supabase.from('approvals').select('id,title,due_date').eq('project_id', pid).eq('status', 'open').order('due_date', { nullsFirst: false }),
       supabase.from('bills').select('id,number,title,amount,status,due_date').eq('project_id', pid),
       supabase.from('cameras').select('id,name').eq('project_id', pid).eq('active', true).order('position').limit(1),
-    ]).then(([u, ph, ap, b, cam]) => {
+      supabase.from('site_logs').select('*').eq('project_id', pid).order('log_date', { ascending: false }).order('created_at', { ascending: false }).limit(1),
+    ]).then(async ([u, ph, ap, b, cam, lg]) => {
       if (!live) return;
       const latest = u.data?.[0] || null;
       const bills = b.data || [];
+      const log = lg.data?.[0] || null;
+      const logPhotos = log ? ((await supabase.from('site_log_photos').select('*').eq('log_id', log.id).order('created_at')).data || []) : [];
+      if (!live) return;
       setD({
+        log, logPhotos,
         latest,
         photos: (ph.data || []).filter((p) => !latest || p.update_id === latest.id),
         approvals: ap.data || [],
-        dueBills: bills.filter((x) => x.status === 'due'),
+        dueBills: bills.filter((x) => x.status === 'due').sort((x, y) => (x.due_date || '9') < (y.due_date || '9') ? -1 : 1),
         paid: bills.filter((x) => x.status === 'paid').reduce((s, x) => s + Number(x.amount), 0),
         camera: cam.data?.[0] || null,
         lastPhoto: ph.data?.[0] || null,
@@ -40,8 +47,16 @@ export default function Home() {
 
   const name = project.client_greeting_name || profile?.full_name?.split(' ')[0] || '';
   const pct = project.percent_complete || 0;
-  const todo = d ? d.approvals.length + d.dueBills.length : 0;
-  const todoText = d ? [...d.dueBills.map((b) => `Bill ${String(b.number).padStart(2, '0')}`), ...d.approvals.map((a) => a.title)].join(' · ') : '';
+  const todo = d ? d.approvals.length : 0;
+  const todoText = d ? d.approvals.map((a) => a.title).join(' · ') : '';
+  const today = todayStr();
+  const due = d?.dueBills || [];
+  const dueTotal = due.reduce((s, b) => s + Number(b.amount), 0);
+  const overdue = due.filter((b) => b.due_date && b.due_date < today);
+  const maxLate = overdue.reduce((m, b) => Math.max(m, daysInclusive(b.due_date, today) - 1), 0);
+  const nextDue = due.find((b) => b.due_date && b.due_date >= today);
+  const billNames = due.map((b) => `Bill ${String(b.number).padStart(2, '0')} · ${b.title}`).join('  |  ');
+  const logLabel = d?.log ? (d.log.log_date === today ? 'Today' : daysInclusive(d.log.log_date, today) === 2 ? 'Yesterday' : longDate(d.log.log_date)) : '';
   const paidPct = project.contract_amount > 0 && d ? Math.round((d.paid / project.contract_amount) * 100) : null;
 
   return (
@@ -78,6 +93,24 @@ export default function Home() {
           <div className="live-cta">{d?.camera ? 'Watch site' : 'Open'}</div>
         </Link>
 
+        {due.length > 0 && (
+          <Link to="/payments" className={`card pay-warn tile-link${overdue.length ? ' overdue' : ''}`} role="alert">
+            <div className="pay-warn-icon"><Icon name="alert" size={22} stroke={2.2} /></div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 15 }}>
+                {overdue.length ? 'Payment overdue' : 'Payment due'} · {inr(dueTotal)}
+              </div>
+              <div className="small" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{billNames}</div>
+              <div className="small" style={{ fontWeight: 600 }}>
+                {overdue.length
+                  ? `Overdue by ${maxLate} day${maxLate === 1 ? '' : 's'}${overdue.length < due.length ? ` · ${due.length - overdue.length} more due` : ''}`
+                  : nextDue ? `Please pay by ${longDate(nextDue.due_date)}` : 'Please pay at your earliest'}
+              </div>
+            </div>
+            <span className="pay-warn-cta">Pay</span>
+          </Link>
+        )}
+
         {todo > 0 && (
           <Link to="/approvals" className="card warn tile-link" style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
             <div className="count-badge">{todo}</div>
@@ -87,6 +120,17 @@ export default function Home() {
             </div>
             <Icon name="chevron" size={18} stroke={2.4} style={{ color: 'var(--amber)' }} />
           </Link>
+        )}
+
+        {d?.log && (
+          <div className="card">
+            <div className="between" style={{ alignItems: 'baseline' }}>
+              <span className="card-title">Daily site log</span>
+              <span className="small muted">{logLabel}</span>
+            </div>
+            <LogEntry log={d.log} photos={d.logPhotos} compact onOpen={(list, start) => setLightbox({ list, start })} />
+            <Link to="/site-log" style={{ fontSize: 14, fontWeight: 600 }}>All daily logs</Link>
+          </div>
         )}
 
         <div className="card">
@@ -100,11 +144,11 @@ export default function Home() {
             <div className="photo-grid">
               {d.photos.slice(0, 3).map((p, i) => (
                 i === 2 && d.photos.length > 3
-                  ? <button key={p.id} onClick={() => setLightbox(p)} aria-label={`Open photos, ${d.photos.length - 2} more`} style={{ position: 'relative' }}>
+                  ? <button key={p.id} onClick={() => setLightbox({ list: d.photos, start: p })} aria-label={`Open photos, ${d.photos.length - 2} more`} style={{ position: 'relative' }}>
                       <Photo path={p.path} alt="" />
                       <span style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: 'rgba(138,28,34,0.55)', color: '#fff', fontSize: 15 }}>+{d.photos.length - 2}</span>
                     </button>
-                  : <button key={p.id} onClick={() => setLightbox(p)} aria-label={p.caption || 'Open site photo'}><Photo path={p.path} alt={p.caption} /></button>
+                  : <button key={p.id} onClick={() => setLightbox({ list: d.photos, start: p })} aria-label={p.caption || 'Open site photo'}><Photo path={p.path} alt={p.caption} /></button>
               ))}
             </div>
           )}
@@ -124,7 +168,7 @@ export default function Home() {
           </Link>
         </div>
       </div>
-      {lightbox && <PhotoBrowser photos={d.photos} start={lightbox} onClose={() => setLightbox(null)} />}
+      {lightbox && <PhotoBrowser photos={lightbox.list} start={lightbox.start} onClose={() => setLightbox(null)} />}
     </div>
   );
 }
