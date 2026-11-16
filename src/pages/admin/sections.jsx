@@ -146,6 +146,7 @@ export function StagesSection({ project, reloadProject, say }) {
   const [rows, reload, error, setError] = useRows('stages', project.id, 'position', true);
   const [busy, run] = useAction(setError);
   const [newName, setNewName] = useState('');
+  const [newDates, setNewDates] = useState({ start: '', end: '' });
 
   const save = (id, patch) => run(() => must(supabase.from('stages').update(patch).eq('id', id))).then(reload);
 
@@ -169,7 +170,9 @@ export function StagesSection({ project, reloadProject, say }) {
 
   async function add(e) {
     e.preventDefault();
-    if (await run(() => must(supabase.from('stages').insert({ project_id: project.id, name: newName.trim(), position: rows.length })))) { setNewName(''); reload(); }
+    if (newDates.start && newDates.end && newDates.end < newDates.start) { setError(new Error('End date must be on or after the start date.')); return; }
+    const row = { project_id: project.id, name: newName.trim(), position: rows.length, start_date: newDates.start || null, end_date: newDates.end || null };
+    if (await run(() => must(supabase.from('stages').insert(row)))) { setNewName(''); setNewDates({ start: '', end: '' }); reload(); }
   }
 
   async function remove(s) {
@@ -181,16 +184,20 @@ export function StagesSection({ project, reloadProject, say }) {
   if (!rows) return <Spinner />;
   return (
     <>
-      <div className="small muted">Edit the note to show dates ("Cast 6 Nov · curing till 20 Nov"). "Make current" ticks off every stage before it.</div>
+      <div className="small muted">Set the planned start and end date of each stage; clients see them on their Progress screen. The note is for extra detail ("curing till 20 Nov"). "Make current" ticks off every stage before it.</div>
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>#</th><th>Stage</th><th>Note for client</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>Stage</th><th>Start</th><th>End</th><th>Note for client</th><th>Status</th><th /></tr></thead>
           <tbody>
             {rows.map((s, i) => (
               <tr key={s.id}>
                 <td>{i + 1}</td>
                 <td><input className="input" style={{ height: 38, fontSize: 14, minWidth: 180 }} defaultValue={s.name} aria-label="Stage name" onBlur={(e) => e.target.value !== s.name && save(s.id, { name: e.target.value })} /></td>
-                <td><input className="input" style={{ height: 38, fontSize: 14, minWidth: 220 }} defaultValue={s.note} aria-label="Note" onBlur={(e) => e.target.value !== s.note && save(s.id, { note: e.target.value })} /></td>
+                <td><input className="input" type="date" style={{ height: 38, fontSize: 13, width: 138 }} defaultValue={s.start_date || ''} aria-label="Start date"
+                  onChange={(e) => (e.target.value || null) !== s.start_date && save(s.id, { start_date: e.target.value || null })} /></td>
+                <td><input className="input" type="date" style={{ height: 38, fontSize: 13, width: 138 }} defaultValue={s.end_date || ''} aria-label="End date" min={s.start_date || undefined}
+                  onChange={(e) => (e.target.value || null) !== s.end_date && save(s.id, { end_date: e.target.value || null })} /></td>
+                <td><input className="input" style={{ height: 38, fontSize: 14, minWidth: 160 }} defaultValue={s.note} aria-label="Note" onBlur={(e) => e.target.value !== s.note && save(s.id, { note: e.target.value })} /></td>
                 <td>
                   <select className="select" style={{ height: 38, fontSize: 14, width: 130 }} value={s.status} aria-label="Status" onChange={(e) => save(s.id, { status: e.target.value })}>
                     <option value="done">Done</option><option value="current">In progress</option><option value="upcoming">Upcoming</option>
@@ -209,6 +216,8 @@ export function StagesSection({ project, reloadProject, say }) {
       </div>
       <form className="toolbar" onSubmit={add}>
         <input className="input" style={{ maxWidth: 320 }} required placeholder="New stage name" value={newName} onChange={(e) => setNewName(e.target.value)} aria-label="New stage name" />
+        <input className="input" type="date" style={{ width: 160 }} value={newDates.start} onChange={(e) => setNewDates({ ...newDates, start: e.target.value })} aria-label="Start date" title="Start date" />
+        <input className="input" type="date" style={{ width: 160 }} value={newDates.end} min={newDates.start || undefined} onChange={(e) => setNewDates({ ...newDates, end: e.target.value })} aria-label="End date" title="End date" />
         <button className="btn" disabled={busy}>Add stage</button>
       </form>
       <ErrorBox error={error} />
