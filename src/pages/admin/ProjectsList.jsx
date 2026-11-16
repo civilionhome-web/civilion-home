@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase, must } from '../../lib/supabase';
 import { Spinner, ErrorBox } from '../../components/ui';
+import { inr } from '../../lib/format';
+import { loadAllVariations } from '../../lib/variations';
 
 // Default stages for a new house; staff can edit them per project.
 export const DEFAULT_STAGES = [
@@ -17,6 +19,7 @@ export const DEFAULT_STAGES = [
 
 export default function ProjectsList() {
   const [rows, setRows] = useState(null);
+  const [vo, setVo] = useState({});
   const [showArchived, setShowArchived] = useState(false);
   const [name, setName] = useState('');
   const [location, setLocation] = useState('');
@@ -29,6 +32,7 @@ export default function ProjectsList() {
       if (e) setError(e);
       setRows(data || []);
     });
+    loadAllVariations().then(setVo);
   }, []);
 
   async function create(e) {
@@ -57,6 +61,17 @@ export default function ProjectsList() {
             <div className="small muted">{p.location || '—'} · {p.pm_name || 'No PM set'}</div>
             <div className="stack-bar" style={{ height: 8 }}><div className="paid" style={{ width: `${p.percent_complete}%` }} /></div>
             <div className="small">{p.percent_complete}% · {p.stage_label || 'Not started'}</div>
+            {Number(p.contract_amount) > 0 && (() => {
+              const v = vo[p.id] || { total: 0, count: 0 };
+              return (
+                <div className="small" style={{ borderTop: '1px solid var(--line, #e7e2dc)', paddingTop: 6, display: 'grid', gap: 2 }}>
+                  <div className="between"><span className="muted">Contract</span><span>{inr(p.contract_amount)}</span></div>
+                  <div className="between"><span className="muted">Variations{v.count ? ` (${v.count})` : ''}</span>
+                    <span className={v.total > 0 ? 'amber' : v.total < 0 ? 'green' : ''} style={{ fontWeight: 600 }}>{v.total > 0 ? '+' : ''}{v.total ? inr(v.total) : '₹0'}</span></div>
+                  <div className="between"><b>Total cost</b><b>{inr(Number(p.contract_amount) + v.total)}</b></div>
+                </div>
+              );
+            })()}
           </Link>
         ))}
         <form className="card" onSubmit={create}>
