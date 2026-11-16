@@ -4,10 +4,11 @@ import { supabase, must } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { Spinner, ErrorBox, useToast } from '../../components/ui';
 import ChatView from '../../components/ChatView';
+import HindranceSection from './HindranceSection';
 import { ClientsSection, StagesSection, UpdatesSection, CameraSection, BillsSection, DecisionsSection } from './sections';
 import DocumentsSection from './DocumentsSection';
 
-const TABS = ['Overview', 'Clients', 'Stages', 'Updates', 'Cameras & site log', 'Bills', 'Documents', 'Decisions', 'Chat'];
+const TABS = ['Overview', 'Clients', 'Stages', 'Hindrances', 'Updates', 'Cameras & site log', 'Bills', 'Documents', 'Decisions', 'Chat'];
 
 export default function ProjectAdmin() {
   const { id } = useParams();
@@ -44,6 +45,7 @@ export default function ProjectAdmin() {
       {tab === 'Overview' && <Overview {...props} />}
       {tab === 'Clients' && <ClientsSection {...props} />}
       {tab === 'Stages' && <StagesSection {...props} />}
+      {tab === 'Hindrances' && <HindranceSection {...props} />}
       {tab === 'Updates' && <UpdatesSection {...props} />}
       {tab === 'Cameras & site log' && <CameraSection {...props} />}
       {tab === 'Bills' && <BillsSection {...props} />}
@@ -66,7 +68,9 @@ const FIELDS = [
   ['stage_label', 'Current stage line on home screen', 'text', 'First floor slab · curing'],
   ['percent_complete', '% complete', 'number'],
   ['schedule_status', 'Schedule', 'select', ['On track', 'Ahead', 'Slight delay', 'Delayed']],
-  ['handover_target', 'Handover target', 'text', 'Aug 2027'],
+  ['start_date', 'Project start date', 'date'],
+  ['completion_date', 'Completion date as per agreement', 'date'],
+  ['handover_target', 'Handover target text (used only if no completion date)', 'text', 'Aug 2027'],
   ['contract_amount', 'Contract amount incl. GST (₹)', 'number'],
   ['boq_amount', 'BOQ amount (₹)', 'number'],
   ['client_currency', 'Client\'s currency for "≈" amounts', 'select', ['AED', 'SAR', 'QAR', 'OMR', 'KWD', 'BHD', 'USD', 'GBP', 'EUR', 'AUD', 'CAD', 'SGD', 'INR']],
@@ -87,7 +91,8 @@ function Overview({ project, reloadProject, say }) {
     e.preventDefault();
     setBusy(true); setError(null);
     const patch = {};
-    FIELDS.forEach(([k, , type]) => { patch[k] = type === 'number' ? Number(f[k] || 0) : (f[k] ?? ''); });
+    FIELDS.forEach(([k, , type]) => { patch[k] = type === 'number' ? Number(f[k] || 0) : type === 'date' ? (f[k] || null) : (f[k] ?? ''); });
+    if (patch.start_date && patch.completion_date && patch.completion_date < patch.start_date) { setError(new Error('Completion date must be after the start date.')); setBusy(false); return; }
     patch.percent_complete = Math.max(0, Math.min(100, Math.round(patch.percent_complete)));
     patch.payment_instructions = f.payment_instructions || '';
     try { await must(supabase.from('projects').update(patch).eq('id', project.id)); say('Saved'); reloadProject(); }
