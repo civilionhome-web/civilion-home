@@ -8,7 +8,7 @@ import { chatSeenAt } from '../../components/ChatView';
 const ProjectCtx = createContext(null);
 export const useProject = () => useContext(ProjectCtx);
 
-const TAB_PATHS = ['/', '/progress', '/payments'];
+const TAB_PATHS = ['/', '/progress', '/payments', '/documents'];
 
 export default function ClientLayout() {
   const { profile, user, isStaff, signOut, refreshProfile } = useAuth();
