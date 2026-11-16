@@ -52,12 +52,14 @@ export default function Home() {
   const todo = d ? d.approvals.length : 0;
   const todoText = d ? d.approvals.map((a) => a.title).join(' · ') : '';
   const today = todayStr();
-  const due = d?.dueBills || [];
-  const dueTotal = due.reduce((s, b) => s + Number(b.amount), 0);
+  const dueAll = d?.dueBills || [];
+  const dueTotal = Math.max(0, dueAll.reduce((s, b) => s + Number(b.amount), 0));   // credits reduce it
+  const credits = dueAll.filter((b) => Number(b.amount) < 0);
+  const due = dueTotal > 0 ? dueAll.filter((b) => Number(b.amount) > 0) : [];
   const overdue = due.filter((b) => b.due_date && b.due_date < today);
   const maxLate = overdue.reduce((m, b) => Math.max(m, daysInclusive(b.due_date, today) - 1), 0);
   const nextDue = due.find((b) => b.due_date && b.due_date >= today);
-  const billNames = due.map((b) => `Bill ${String(b.number).padStart(2, '0')} · ${b.title}`).join('  |  ');
+  const billNames = [...due, ...credits].map((b) => `Bill ${String(b.number).padStart(2, '0')} · ${b.title}${Number(b.amount) < 0 ? ` (${inr(b.amount)})` : ''}`).join('  |  ');
   const logLabel = d?.log ? (d.log.log_date === today ? 'Today' : daysInclusive(d.log.log_date, today) === 2 ? 'Yesterday' : longDate(d.log.log_date)) : '';
   const contract = Number(project.contract_amount) || 0;
   const voTotal = d?.vo?.total || 0;
