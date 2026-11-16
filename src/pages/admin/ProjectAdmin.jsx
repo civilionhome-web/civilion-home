@@ -5,10 +5,11 @@ import { useAuth } from '../../lib/auth';
 import { Spinner, ErrorBox, useToast } from '../../components/ui';
 import ChatView from '../../components/ChatView';
 import HindranceSection from './HindranceSection';
+import DailyLogSection from './DailyLogSection';
 import { ClientsSection, StagesSection, UpdatesSection, CameraSection, BillsSection, DecisionsSection } from './sections';
 import DocumentsSection from './DocumentsSection';
 
-const TABS = ['Overview', 'Clients', 'Stages', 'Hindrances', 'Updates', 'Cameras & site log', 'Bills', 'Documents', 'Decisions', 'Chat'];
+const TABS = ['Overview', 'Clients', 'Daily log', 'Stages', 'Hindrances', 'Updates', 'Cameras & site log', 'Bills', 'Documents', 'Decisions', 'Chat'];
 
 export default function ProjectAdmin() {
   const { id } = useParams();
@@ -44,6 +45,7 @@ export default function ProjectAdmin() {
       </div>
       {tab === 'Overview' && <Overview {...props} />}
       {tab === 'Clients' && <ClientsSection {...props} />}
+      {tab === 'Daily log' && <DailyLogSection {...props} />}
       {tab === 'Stages' && <StagesSection {...props} />}
       {tab === 'Hindrances' && <HindranceSection {...props} />}
       {tab === 'Updates' && <UpdatesSection {...props} />}
