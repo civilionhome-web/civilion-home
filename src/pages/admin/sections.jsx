@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { supabase, must } from '../../lib/supabase';
+import { supabase, must, CLIENT_LOGIN } from '../../lib/supabase';
 import { uploadFile, removeFile, openFile } from '../../lib/files';
 import { inr, delta, shortDate, longDate, digitsOnly, timeIn, IST } from '../../lib/format';
 import { Photo, Spinner, ErrorBox, Icon } from '../../components/ui';
@@ -29,52 +29,94 @@ function useAction(setError) {
 const today = () => new Date().toISOString().slice(0, 10);
 
 // ---------------------------------------------------------------- Clients
+function clientInvite(r, appUrl) {
+  const first = r.display_name ? ' ' + r.display_name.split(' ')[0] : '';
+  const how = (CLIENT_LOGIN === 'email' || !r.phone_digits) && r.email
+    ? `Sign in with your email (${r.email}): tap "Email me a code" and type the 6-digit code we send you.`
+    : 'Sign in with this mobile number and the code we send you.';
+  return `Hello${first}, you can now follow your home's construction on Civilion Home.\n\n${appUrl}\n\n${how}\n\nTip: use "Add to Home screen" to keep it like an app.`;
+}
+
 export function ClientsSection({ project, say }) {
   const [rows, reload, error, setError] = useRows('project_clients', project.id);
+  const [people, setPeople] = useState([]);
   const [busy, run] = useAction(setError);
   const [f, setF] = useState({ display_name: '', cc: '971', phone: '', email: '' });
+  const emailOnly = CLIENT_LOGIN === 'email';
+
+  // Who has already signed in (to show "Signed in" / "Not yet")
+  useEffect(() => {
+    supabase.from('profiles').select('email, phone, created_at').then(({ data }) => setPeople(data || []));
+  }, [rows]);
+  const signedIn = (r) => people.some((p) =>
+    (r.email && (p.email || '').toLowerCase() === r.email.toLowerCase()) ||
+    (r.phone_digits && digitsOnly(p.phone) === r.phone_digits));
 
   async function add(e) {
     e.preventDefault();
     const phone = digitsOnly(f.phone).replace(/^0+/, '');
     const ok = await run(async () => {
+      if (emailOnly && !f.email.trim()) throw new Error('Please add an email. Clients sign in with an email code for now (mobile sign-in is not switched on yet).');
       if (!phone && !f.email.trim()) throw new Error('Enter a mobile number or an email.');
       await must(supabase.from('project_clients').insert({
         project_id: project.id, display_name: f.display_name.trim(),
         phone_digits: phone ? digitsOnly(f.cc) + phone : '', email: f.email.trim().toLowerCase(),
       }));
     });
-    if (ok) { setF({ ...f, display_name: '', phone: '', email: '' }); reload(); say('Client added'); }
+    if (ok) { setF({ ...f, display_name: '', phone: '', email: '' }); reload(); say('Client added. Send them the invite.'); }
+  }
+
+  async function save(r, patch) {
+    const next = { ...r, ...patch };
+    if (!next.email && !next.phone_digits) { setError(new Error('Keep at least an email or a mobile number.')); reload(); return; }
+    if (await run(() => must(supabase.from('project_clients').update(patch).eq('id', r.id)))) { say('Saved'); reload(); }
   }
 
   async function remove(r) {
-    if (!window.confirm(`Remove access for ${r.display_name || r.phone_digits || r.email}?`)) return;
+    if (!window.confirm(`Remove access for ${r.display_name || r.email || r.phone_digits}? They will no longer see this project.`)) return;
     if (await run(() => must(supabase.from('project_clients').delete().eq('id', r.id)))) reload();
+  }
+
+  async function copy(r, appUrl) {
+    const t = clientInvite(r, appUrl);
+    try { await navigator.clipboard.writeText(t); say('Invite message copied'); } catch { window.prompt('Copy this message:', t); }
   }
 
   if (!rows) return <Spinner />;
   const appUrl = window.location.origin + import.meta.env.BASE_URL.replace(/\/$/, '');
+  const cell = { height: 38, fontSize: 14 };
   return (
     <>
       <div className="card small" style={{ lineHeight: 1.55 }}>
-        Add each person who should see this project (husband, wife, parents in Kerala…). They open <b>{appUrl}</b>, sign in with the
-        same number or email, and see this project straight away.
+        <div>
+          Add each person who should see this project (husband, wife, parents in Kerala…). They open <b>{appUrl}</b>, sign in with the
+          same {emailOnly ? 'email' : 'email or mobile number'}, and see this project straight away. You can correct a name, email or mobile in the list.
+        </div>
       </div>
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>Name</th><th>Mobile</th><th>Email</th><th /></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Mobile (digits with country code)</th><th>Status</th><th /></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>
-                <td>{r.display_name}</td><td>{r.phone_digits ? `+${r.phone_digits}` : ''}</td><td>{r.email}</td>
-                <td style={{ textAlign: 'right' }}>
-                  {r.phone_digits && <a className="btn ghost small" target="_blank" rel="noreferrer"
-                    href={`https://wa.me/${r.phone_digits}?text=${encodeURIComponent(`Hello${r.display_name ? ' ' + r.display_name.split(' ')[0] : ''}, you can now follow your home's construction on Civilion Home: ${appUrl} — sign in with this WhatsApp number. Tip: use "Add to Home screen" to keep it like an app.`)}`}>Send invite</a>}{' '}
+                <td><input className="input" style={{ ...cell, minWidth: 130 }} defaultValue={r.display_name} aria-label="Name"
+                  onBlur={(e) => e.target.value.trim() !== r.display_name && save(r, { display_name: e.target.value.trim() })} /></td>
+                <td><input className="input" type="email" style={{ ...cell, minWidth: 200 }} defaultValue={r.email} aria-label="Email"
+                  onBlur={(e) => e.target.value.trim().toLowerCase() !== r.email && save(r, { email: e.target.value.trim().toLowerCase() })} /></td>
+                <td><input className="input" type="tel" style={{ ...cell, minWidth: 140 }} defaultValue={r.phone_digits} aria-label="Mobile" placeholder="971501234567"
+                  onBlur={(e) => digitsOnly(e.target.value) !== r.phone_digits && save(r, { phone_digits: digitsOnly(e.target.value) })} /></td>
+                <td>{signedIn(r) ? <span className="pill done">Signed in</span> : <span className="pill upcoming">Not yet</span>}</td>
+                <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
+                  {r.phone_digits && <><a className="btn ghost small" target="_blank" rel="noreferrer"
+                    href={`https://wa.me/${r.phone_digits}?text=${encodeURIComponent(clientInvite(r, appUrl))}`}>WhatsApp invite</a>{' '}</>}
+                  {r.email && <><a className="btn ghost small"
+                    href={`mailto:${r.email}?subject=${encodeURIComponent('Follow your home on Civilion Home')}&body=${encodeURIComponent(clientInvite(r, appUrl))}`}>Email invite</a>{' '}</>}
+                  <button className="btn ghost small" onClick={() => copy(r, appUrl)}>Copy</button>{' '}
                   <button className="btn danger small" disabled={busy} onClick={() => remove(r)}>Remove</button>
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && <tr><td colSpan={4} className="muted">No clients yet.</td></tr>}
+            {rows.length === 0 && <tr><td colSpan={5} className="muted">No clients yet.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -82,15 +124,16 @@ export function ClientsSection({ project, say }) {
         <div className="card-title">Add a client</div>
         <div className="form-grid">
           <label className="field"><span>Name</span><input className="input" value={f.display_name} onChange={(e) => setF({ ...f, display_name: e.target.value })} placeholder="Anil Kumar" /></label>
-          <label className="field"><span>Mobile (WhatsApp)</span>
+          <label className="field"><span>Email{emailOnly ? '' : ' (optional)'}</span><input className="input" type="email" required={emailOnly} value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} placeholder="anil@example.com" /></label>
+          <label className="field"><span>Mobile (WhatsApp){emailOnly ? ', optional' : ''}</span>
             <div className="row" style={{ gap: 6 }}>
               <span className="muted">+</span>
               <input className="input" style={{ width: 80 }} aria-label="Country code" value={f.cc} onChange={(e) => setF({ ...f, cc: e.target.value })} />
               <input className="input" type="tel" aria-label="Mobile number" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} placeholder="50 123 4567" />
             </div>
           </label>
-          <label className="field"><span>Email (optional)</span><input className="input" type="email" value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} /></label>
         </div>
+        {emailOnly && <div className="small muted">Clients sign in with an email code for now. The mobile number is kept for WhatsApp invites and for when mobile sign-in is switched on.</div>}
         <ErrorBox error={error} />
         <div><button className="btn" disabled={busy}>Add client</button></div>
       </form>
