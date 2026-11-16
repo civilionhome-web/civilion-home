@@ -6,6 +6,8 @@ import { Spinner, ErrorBox, useToast } from '../../components/ui';
 import ChatView from '../../components/ChatView';
 import HindranceSection from './HindranceSection';
 import DailyLogSection from './DailyLogSection';
+import { inr } from '../../lib/format';
+import { loadVariations } from '../../lib/variations';
 import { ClientsSection, StagesSection, UpdatesSection, CameraSection, BillsSection, DecisionsSection } from './sections';
 import DocumentsSection from './DocumentsSection';
 
@@ -17,6 +19,7 @@ export default function ProjectAdmin() {
   const [tab, setTab] = useState(() => sessionStorage.getItem('civ_admin_tab') || 'Overview');
   const [error, setError] = useState(null);
   const [toast, say] = useToast();
+  const [vo, setVo] = useState(null);
 
   const load = useCallback(async () => {
     const { data, error: e } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
@@ -24,6 +27,7 @@ export default function ProjectAdmin() {
     setProject(data || false);
   }, [id]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadVariations(id).then(setVo); }, [id, tab]);
   useEffect(() => { sessionStorage.setItem('civ_admin_tab', tab); }, [tab]);
 
   if (project === null) return <Spinner />;
@@ -37,6 +41,13 @@ export default function ProjectAdmin() {
           <Link to="/admin" className="small">← All projects</Link>
           <h1>{project.name}</h1>
           <div className="small muted">{[project.location, `${project.percent_complete || 0}% complete`, project.stage_label].filter(Boolean).join(' · ')}</div>
+          {Number(project.contract_amount) > 0 && vo && (
+            <div className="small" style={{ marginTop: 2 }}>
+              Contract {inr(project.contract_amount)} · Variations{vo.items.length ? ` (${vo.items.length})` : ''}{' '}
+              <b className={vo.total > 0 ? 'amber' : vo.total < 0 ? 'green' : ''}>{vo.total > 0 ? '+' : ''}{vo.total ? inr(vo.total) : '₹0'}</b>
+              {' '}· <b>Total {inr(Number(project.contract_amount) + vo.total)}</b>
+            </div>
+          )}
         </div>
         <Link className="btn ghost small" to="/" onClick={() => localStorage.setItem('civ_project', project.id)}>See as client</Link>
       </div>
