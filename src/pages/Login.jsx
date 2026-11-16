@@ -66,7 +66,7 @@ export default function Login() {
   return (
     <div className="login">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        <div className="logo-box"><Logo width={150} /></div>
+        <div className="logo-box"><Logo width={170} /></div>
         <div>
           <div className="kicker">CIVILION HOME</div>
           <h1>Watch your Kerala home rise, from anywhere.</h1>
