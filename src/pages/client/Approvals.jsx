@@ -85,7 +85,7 @@ function OpenDecision({ a, options, onDone }) {
 
   async function confirm() {
     if (!chosen) return;
-    if (!window.confirm(`Confirm "${chosen.name}"? ${Number(chosen.cost_delta) ? delta(chosen.cost_delta) + ' will be added to your contract as a variation.' : ''}`)) return;
+    if (!window.confirm(`Confirm "${chosen.name}"? ${Number(chosen.cost_delta) > 0 ? delta(chosen.cost_delta) + ' will be added to your contract as a variation, and a bill for it will be due today.' : Number(chosen.cost_delta) < 0 ? delta(chosen.cost_delta) + ' will be reduced from your contract.' : ''}`)) return;
     setBusy(true); setError(null);
     const { error: e } = await supabase.rpc('decide_approval', { p_approval: a.id, p_option: chosen.id });
     setBusy(false);
