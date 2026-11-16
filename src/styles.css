@@ -224,3 +224,11 @@ h1, h2, h3 { font-family: var(--display); margin: 0; }
 .doc-badge { flex: none; width: 44px; height: 44px; border-radius: 10px; background: var(--maroon-tint); color: var(--maroon); display: grid; place-items: center; font: 700 11px var(--display); letter-spacing: 0.03em; }
 .doc-open { flex: 1; min-width: 0; text-align: left; background: none; border: 0; padding: 4px 0; display: flex; flex-direction: column; gap: 2px; cursor: pointer; color: inherit; overflow-wrap: anywhere; }
 .doc-open:hover span:first-child { color: var(--maroon); }
+
+/* Payment-due warning on the client home screen */
+.card.pay-warn { flex-direction: row; align-items: center; gap: 12px; background: #fdecec; border: 1px solid #f0b4b4; color: #7a1414; }
+.card.pay-warn.overdue { background: #fbdcdc; border-color: #d97070; }
+.pay-warn-icon { width: 40px; height: 40px; border-radius: 20px; background: #b42318; color: #fff; display: grid; place-items: center; flex: none; }
+.pay-warn-cta { background: #b42318; color: #fff; font-weight: 700; font-size: 13px; padding: 7px 12px; border-radius: 18px; flex: none; }
+/* delete button on admin photo thumbnails */
+.thumb-x { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; border-radius: 11px; border: 0; background: rgba(0,0,0,0.65); color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
