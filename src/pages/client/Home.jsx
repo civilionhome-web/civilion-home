@@ -6,6 +6,7 @@ import { useProject } from './ClientLayout';
 import { greeting, inr, lakhs, shortDate, longDate } from '../../lib/format';
 import { daysInclusive, todayStr } from '../../lib/schedule';
 import { LogEntry } from './SiteLog';
+import { loadVariations } from '../../lib/variations';
 import { Icon, Logo, Photo, Lightbox } from '../../components/ui';
 
 export default function Home() {
@@ -24,7 +25,8 @@ export default function Home() {
       supabase.from('bills').select('id,number,title,amount,status,due_date').eq('project_id', pid),
       supabase.from('cameras').select('id,name').eq('project_id', pid).eq('active', true).order('position').limit(1),
       supabase.from('site_logs').select('*').eq('project_id', pid).order('log_date', { ascending: false }).order('created_at', { ascending: false }).limit(1),
-    ]).then(async ([u, ph, ap, b, cam, lg]) => {
+      loadVariations(pid),
+    ]).then(async ([u, ph, ap, b, cam, lg, vo]) => {
       if (!live) return;
       const latest = u.data?.[0] || null;
       const bills = b.data || [];
@@ -32,7 +34,7 @@ export default function Home() {
       const logPhotos = log ? ((await supabase.from('site_log_photos').select('*').eq('log_id', log.id).order('created_at')).data || []) : [];
       if (!live) return;
       setD({
-        log, logPhotos,
+        log, logPhotos, vo,
         latest,
         photos: (ph.data || []).filter((p) => !latest || p.update_id === latest.id),
         approvals: ap.data || [],
@@ -57,7 +59,10 @@ export default function Home() {
   const nextDue = due.find((b) => b.due_date && b.due_date >= today);
   const billNames = due.map((b) => `Bill ${String(b.number).padStart(2, '0')} · ${b.title}`).join('  |  ');
   const logLabel = d?.log ? (d.log.log_date === today ? 'Today' : daysInclusive(d.log.log_date, today) === 2 ? 'Yesterday' : longDate(d.log.log_date)) : '';
-  const paidPct = project.contract_amount > 0 && d ? Math.round((d.paid / project.contract_amount) * 100) : null;
+  const contract = Number(project.contract_amount) || 0;
+  const voTotal = d?.vo?.total || 0;
+  const totalCost = contract + voTotal;
+  const paidPct = totalCost > 0 && d ? Math.round((d.paid / totalCost) * 100) : null;
 
   return (
     <div className="screen">
@@ -155,11 +160,25 @@ export default function Home() {
           <Link to="/progress" style={{ fontSize: 14, fontWeight: 600 }}>All updates and photos</Link>
         </div>
 
+        {contract > 0 && d && (
+          <Link to="/payments" className="card tile-link" style={{ gap: 6 }}>
+            <span className="card-title">Project cost</span>
+            <div className="between small"><span className="muted">Contract (as per agreement)</span><b>{inr(contract)}</b></div>
+            <div className="between small">
+              <span className="muted">Variations{d.vo.items.length ? ` (${d.vo.items.length} approved)` : ''}</span>
+              <b className={voTotal > 0 ? 'amber' : voTotal < 0 ? 'green' : ''}>{voTotal > 0 ? '+' : ''}{voTotal ? inr(voTotal) : '₹0'}</b>
+            </div>
+            <div className="between" style={{ borderTop: '1px solid var(--line, #e7e2dc)', paddingTop: 6 }}>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>Total project cost</span><b style={{ fontSize: 16 }}>{inr(totalCost)}</b>
+            </div>
+          </Link>
+        )}
+
         <div className="grid2">
           <Link to="/payments" className="card tile-link" style={{ gap: 2, padding: 12 }}>
             <div className="label">Paid so far</div>
             <div className="big">{d ? lakhs(d.paid) : '—'}</div>
-            {paidPct !== null && <div className="small green" style={{ fontWeight: 600 }}>{paidPct}% of contract</div>}
+            {paidPct !== null && <div className="small green" style={{ fontWeight: 600 }}>{paidPct}% of total cost</div>}
           </Link>
           <Link to="/chat" className="card tile-link" style={{ gap: 2, padding: 12 }}>
             <div className="label">Project manager</div>
