@@ -13,6 +13,7 @@ import Progress from './pages/client/Progress';
 import Payments from './pages/client/Payments';
 import Approvals from './pages/client/Approvals';
 import Chat from './pages/client/Chat';
+import Documents from './pages/client/Documents';
 import AdminLayout from './pages/admin/AdminLayout';
 import ProjectsList from './pages/admin/ProjectsList';
 import ProjectAdmin from './pages/admin/ProjectAdmin';
@@ -55,6 +56,7 @@ function App() {
             <Route path="/payments" element={<Payments />} />
             <Route path="/approvals" element={<Approvals />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/documents" element={<Documents />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
