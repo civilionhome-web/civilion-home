@@ -20,6 +20,7 @@ const paths = {
   download: <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />,
   camera: <><path d="M3 8h4l2-3h6l2 3h4v11H3z" /><circle cx="12" cy="13" r="3.5" /></>,
   plus: <path d="M12 5v14M5 12h14" />,
+  alert: <><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></>,
   trash: <path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" />,
 };
 
