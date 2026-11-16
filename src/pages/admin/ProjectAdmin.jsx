@@ -5,8 +5,9 @@ import { useAuth } from '../../lib/auth';
 import { Spinner, ErrorBox, useToast } from '../../components/ui';
 import ChatView from '../../components/ChatView';
 import { ClientsSection, StagesSection, UpdatesSection, CameraSection, BillsSection, DecisionsSection } from './sections';
+import DocumentsSection from './DocumentsSection';
 
-const TABS = ['Overview', 'Clients', 'Stages', 'Updates', 'Cameras & site log', 'Bills', 'Decisions', 'Chat'];
+const TABS = ['Overview', 'Clients', 'Stages', 'Updates', 'Cameras & site log', 'Bills', 'Documents', 'Decisions', 'Chat'];
 
 export default function ProjectAdmin() {
   const { id } = useParams();
@@ -46,6 +47,7 @@ export default function ProjectAdmin() {
       {tab === 'Updates' && <UpdatesSection {...props} />}
       {tab === 'Cameras & site log' && <CameraSection {...props} />}
       {tab === 'Bills' && <BillsSection {...props} />}
+      {tab === 'Documents' && <DocumentsSection {...props} />}
       {tab === 'Decisions' && <DecisionsSection {...props} />}
       {tab === 'Chat' && (
         <div className="chat-wrap">
