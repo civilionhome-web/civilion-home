@@ -27,6 +27,7 @@ export default function Progress() {
 
   if (!stages) return <Spinner />;
   const currentIdx = stages.findIndex((s) => s.status === 'current');
+  const inProgress = stages.filter((s) => s.status === 'current').length;
   const doneCount = stages.filter((s) => s.status === 'done').length;
   const stageNo = currentIdx >= 0 ? currentIdx + 1 : Math.min(doneCount + 1, stages.length);
   const sch = scheduleSummary(project, hindrances);
@@ -42,7 +43,7 @@ export default function Progress() {
       <div className="page-head">
         <h1>Progress</h1>
         <div className="sub">
-          {stages.length ? `Stage ${stageNo} of ${stages.length}` : 'Stages coming soon'}
+          {stages.length ? (inProgress > 1 ? `${inProgress} stages in progress · ${doneCount} of ${stages.length} done` : `Stage ${stageNo} of ${stages.length}`) : 'Stages coming soon'}
           {handover ? ` · handover ${handover}` : ''}
         </div>
       </div>
@@ -73,7 +74,7 @@ export default function Progress() {
                   <div className={`small${s.start_date || s.end_date ? '' : ' muted'}`} style={s.start_date || s.end_date ? { color: 'var(--ink)' } : { fontStyle: 'italic' }}>{range(s)}</div>
                   {s.note && <div className="small muted">{s.note}</div>}
                 </div>
-                <span className={`pill ${s.status}`}>{STATUS[s.status]}</span>
+                <span className={`pill ${s.status}`}>{s.status === 'current' ? `In progress · ${s.progress ?? 0}%` : STATUS[s.status]}</span>
               </div>
             ))}
           </div>
