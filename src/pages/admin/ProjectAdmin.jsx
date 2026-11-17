@@ -78,8 +78,6 @@ const FIELDS = [
   ['name', 'Project name', 'text'],
   ['location', 'Location', 'text'],
   ['client_greeting_name', 'Client first name (for "Good morning, …")', 'text'],
-  ['stage_label', 'Current stage line on home screen', 'text', 'First floor slab · curing'],
-  ['percent_complete', '% complete', 'number'],
   ['schedule_status', 'Schedule', 'select', ['On track', 'Ahead', 'Slight delay', 'Delayed']],
   ['start_date', 'Project start date', 'date'],
   ['completion_date', 'Completion date as per agreement', 'date'],
@@ -106,7 +104,6 @@ function Overview({ project, reloadProject, say }) {
     const patch = {};
     FIELDS.forEach(([k, , type]) => { patch[k] = type === 'number' ? Number(f[k] || 0) : type === 'date' ? (f[k] || null) : (f[k] ?? ''); });
     if (patch.start_date && patch.completion_date && patch.completion_date < patch.start_date) { setError(new Error('Completion date must be after the start date.')); setBusy(false); return; }
-    patch.percent_complete = Math.max(0, Math.min(100, Math.round(patch.percent_complete)));
     patch.payment_instructions = f.payment_instructions || '';
     try { await must(supabase.from('projects').update(patch).eq('id', project.id)); say('Saved'); reloadProject(); }
     catch (err) { setError(err); }
@@ -137,6 +134,7 @@ function Overview({ project, reloadProject, say }) {
           </label>
         ))}
       </div>
+      <div className="small muted">Overall % complete ({project.percent_complete || 0}%) and the current-work line are worked out automatically from the <b>Stages</b> tab.</div>
       <label className="field"><span>How to pay (shown to the client — your bank details, IFSC, SWIFT, notes)</span>
         <textarea className="textarea" rows={6} value={f.payment_instructions || ''} onChange={set('payment_instructions')}
           placeholder={'Account name: Civilion Builders and Developers LLP\nBank: …\nAccount no: …\nIFSC: …\nSWIFT (for transfers from abroad): …'} />
