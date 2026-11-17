@@ -470,6 +470,12 @@ export function BillsSection({ project, say }) {
     if (ok) { say(f.id ? 'Bill updated' : 'Bill added'); setF({ ...EMPTY_BILL, number: '' }); reload(); }
   }
 
+  async function detach(b, field, label) {
+    if (!window.confirm(`Remove the ${label.toLowerCase()} from Bill ${String(b.number).padStart(2, '0')}? The client will no longer see it.`)) return;
+    const old = b[field];
+    if (await run(() => must(supabase.from('bills').update({ [field]: null }).eq('id', b.id)))) { await removeFile(old); reload(); say(`${label} removed`); }
+  }
+
   async function attach(b, field, file) {
     if (!file) return;
     const ok = await run(async () => {
@@ -516,8 +522,8 @@ export function BillsSection({ project, say }) {
                 <td><span className={`pill ${b.status === 'paid' ? 'done' : b.status === 'due' ? 'due' : 'upcoming'}`}>{b.status}</span>
                   <div className="small muted">{b.status === 'paid' ? longDate(b.paid_on) : b.due_date ? `due ${shortDate(b.due_date)}` : ''}</div></td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <FileCell label="Bill PDF" path={b.bill_path} onPick={(file) => attach(b, 'bill_path', file)} />
-                  <FileCell label="Receipt" path={b.receipt_path} onPick={(file) => attach(b, 'receipt_path', file)} />
+                  <FileCell label="Bill PDF" path={b.bill_path} onPick={(file) => attach(b, 'bill_path', file)} onRemove={() => detach(b, 'bill_path', 'Bill PDF')} />
+                  <FileCell label="Receipt" path={b.receipt_path} onPick={(file) => attach(b, 'receipt_path', file)} onRemove={() => detach(b, 'receipt_path', 'Receipt')} />
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   {b.status !== 'paid' && <><button className="btn small" disabled={busy} onClick={() => markPaid(b)}>Mark paid</button>{' '}</>}
@@ -555,13 +561,14 @@ export function BillsSection({ project, say }) {
   );
 }
 
-function FileCell({ label, path, onPick }) {
+function FileCell({ label, path, onPick, onRemove }) {
   const ref = useRef(null);
   return (
     <span style={{ marginRight: 8 }}>
       <input ref={ref} type="file" accept="application/pdf,image/*" hidden onChange={(e) => { onPick(e.target.files?.[0]); e.target.value = ''; }} />
       {path && <button className="linkish small" style={{ padding: '4px' }} onClick={() => openFile(path)}>{label} ↗</button>}
       <button className="btn ghost small" onClick={() => ref.current?.click()}>{path ? 'Replace' : `Upload ${label.toLowerCase()}`}</button>
+      {path && onRemove && <>{' '}<button className="btn ghost small" style={{ color: '#b42318' }} onClick={onRemove} aria-label={`Remove ${label}`}>Remove</button></>}
     </span>
   );
 }
@@ -607,6 +614,11 @@ export function DecisionsSection({ project, say }) {
   }
 
   async function setStatus(a, status) {
+    if (status === 'open' && a.status === 'decided') {
+      // Reopen a chosen decision: cancels its unpaid variation bill and notes it in the chat
+      if (await run(async () => { const { error: e } = await supabase.rpc('undo_decision', { p_approval: a.id }); if (e) throw e; })) { reload(); say('Decision reopened; its unpaid variation bill (if any) was cancelled'); }
+      return;
+    }
     const patch = status === 'open' ? { status, chosen_option_id: null, decided_by: null, decided_by_name: '', decided_at: null } : { status };
     if (await run(() => must(supabase.from('approvals').update(patch).eq('id', a.id)))) reload();
   }
@@ -673,7 +685,7 @@ export function DecisionsSection({ project, say }) {
             {chosen && <div className="success">Chose "{chosen.name}" — {a.decided_by_name || 'client'}, {new Date(a.decided_at).toLocaleString('en-GB', { timeZone: IST })} IST</div>}
             <div className="toolbar">
               {a.status === 'open' && <button className="btn ghost small" disabled={busy} onClick={() => setStatus(a, 'cancelled')}>Cancel request</button>}
-              {a.status !== 'open' && <button className="btn ghost small" disabled={busy} onClick={() => { if (window.confirm('Reopen so the client can choose again?')) setStatus(a, 'open'); }}>Reopen</button>}
+              {a.status !== 'open' && <button className="btn ghost small" disabled={busy} onClick={() => { if (window.confirm(a.status === 'decided' ? 'Reopen so the client can choose again? Its variation bill will be cancelled if it is not paid yet.' : 'Reopen so the client can choose again?')) setStatus(a, 'open'); }}>Reopen</button>}
               <button className="btn danger small" disabled={busy} onClick={() => remove(a)}>Delete</button>
             </div>
           </div>
