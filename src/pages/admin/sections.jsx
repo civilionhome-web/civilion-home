@@ -162,12 +162,17 @@ export function StagesSection({ project, reloadProject, say }) {
     if (ok) { say('Date saved'); reload(); }
   }
 
-  async function makeCurrent(idx) {
-    const ok = await run(async () => {
-      await Promise.all(rows.map((s, i) => must(supabase.from('stages').update({ status: i < idx ? 'done' : i === idx ? 'current' : 'upcoming' }).eq('id', s.id))));
-      await must(supabase.from('projects').update({ stage_label: rows[idx].name }).eq('id', project.id));
-    });
-    if (ok) { reload(); reloadProject(); say(`"${rows[idx].name}" is now the current stage`); }
+  // Several stages can be in progress at once. The project's overall % and
+  // "current work" line are recalculated by the database from these.
+  async function setStage(s, patch, msg) {
+    const ok = await run(() => must(supabase.from('stages').update(patch).eq('id', s.id)));
+    if (ok) { reload(); reloadProject(); if (msg) say(msg); }
+  }
+  const start = (s) => setStage(s, { status: 'current', progress: s.status === 'current' ? s.progress : 0 }, `"${s.name}" is now in progress`);
+  const finish = (s) => setStage(s, { status: 'done' }, `"${s.name}" marked done`);
+  async function saveProgress(s, value) {
+    const v = Math.max(0, Math.min(99, Math.round(Number(value) || 0)));
+    if (v !== s.progress) await setStage(s, { progress: v }, `${s.name}: ${v}%`);
   }
 
   async function move(idx, dir) {
@@ -198,10 +203,20 @@ export function StagesSection({ project, reloadProject, say }) {
   return (
     <>
       {noDates > 0 && <div className="card small" style={{ background: '#fff6e5', borderColor: '#f0d49a' }}>{noDates} of {rows.length} stages still need a start or end date (shown in yellow). Clients see “Dates to be confirmed” for these.</div>}
-      <div className="small muted">Set the planned start and end date of each stage; clients see them on their Progress screen. The note is for extra detail ("curing till 20 Nov"). "Make current" ticks off every stage before it.</div>
+      {(() => {
+        const cur = rows.filter((s) => s.status === 'current');
+        const overall = rows.length ? Math.round(rows.reduce((t, s) => t + (s.status === 'done' ? 100 : s.status === 'current' ? s.progress : 0), 0) / rows.length) : 0;
+        return (
+          <div className="card small" style={{ gap: 4 }}>
+            <div><b>In progress now:</b> {cur.length ? cur.map((s) => `${s.name} (${s.progress}%)`).join(' · ') : 'none — press Start on the stages being worked on'}</div>
+            <div><b>Overall project progress:</b> {overall}% <span className="muted">(each stage counts equally; shown to the client automatically)</span></div>
+          </div>
+        );
+      })()}
+      <div className="small muted">Several stages can be in progress at the same time: press <b>Start</b> on each, keep its <b>%</b> up to date, and press <b>Done</b> when finished. Dates are shown to the client on the Progress screen; the note is for extra detail ("curing till 20 Nov").</div>
       <div className="table-wrap">
         <table className="table">
-          <thead><tr><th>#</th><th>Stage</th><th>Start</th><th>End</th><th>Note for client</th><th>Status</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>Stage</th><th>Start</th><th>End</th><th>Note for client</th><th>Status / % done</th><th /></tr></thead>
           <tbody>
             {rows.map((s, i) => (
               <tr key={s.id}>
@@ -212,13 +227,21 @@ export function StagesSection({ project, reloadProject, say }) {
                 <td><input className="input" type="date" style={{ height: 38, fontSize: 13, width: 138, ...(s.end_date ? {} : MISSING) }} defaultValue={s.end_date || ''} aria-label="End date" min={s.start_date || undefined}
                   onBlur={(e) => saveDate(s, 'end_date', e.target.value)} /></td>
                 <td><input className="input" style={{ height: 38, fontSize: 14, minWidth: 160 }} defaultValue={s.note} aria-label="Note" onBlur={(e) => e.target.value !== s.note && save(s.id, { note: e.target.value })} /></td>
-                <td>
-                  <select className="select" style={{ height: 38, fontSize: 14, width: 130 }} value={s.status} aria-label="Status" onChange={(e) => save(s.id, { status: e.target.value })}>
+                <td style={{ whiteSpace: 'nowrap' }}>
+                  <select className="select" style={{ height: 38, fontSize: 14, width: 124 }} value={s.status} aria-label="Status" onChange={(e) => setStage(s, { status: e.target.value })}>
                     <option value="done">Done</option><option value="current">In progress</option><option value="upcoming">Upcoming</option>
                   </select>
+                  {s.status === 'current' && (
+                    <span style={{ marginLeft: 6 }}>
+                      <input key={`${s.id}-${s.progress}`} className="input" type="number" min="0" max="99" inputMode="numeric" style={{ height: 38, width: 64, fontSize: 14 }}
+                        defaultValue={s.progress} aria-label={`${s.name} percent complete`} onBlur={(e) => saveProgress(s, e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()} /> %
+                    </span>
+                  )}
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
-                  <button className="btn ghost small" disabled={busy} onClick={() => makeCurrent(i)}>Make current</button>{' '}
+                  {s.status !== 'current' && s.status !== 'done' && <><button className="btn ghost small" disabled={busy} onClick={() => start(s)}>Start</button>{' '}</>}
+                  {s.status === 'current' && <><button className="btn small" disabled={busy} onClick={() => finish(s)}>Done</button>{' '}</>}
                   <button className="btn ghost small" disabled={busy || i === 0} onClick={() => move(i, -1)} aria-label="Move up">↑</button>{' '}
                   <button className="btn ghost small" disabled={busy || i === rows.length - 1} onClick={() => move(i, 1)} aria-label="Move down">↓</button>{' '}
                   <button className="btn danger small" disabled={busy} onClick={() => remove(s)} aria-label="Delete stage"><Icon name="trash" size={16} /></button>
