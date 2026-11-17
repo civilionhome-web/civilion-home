@@ -9,14 +9,16 @@ import { Icon, Photo, Spinner, ErrorBox } from '../../components/ui';
 export default function Approvals() {
   const { project } = useProject();
   const [data, setData] = useState(null);
+  const [err, setErr] = useState(null);
 
   const load = useCallback(async () => {
-    const [a, o, b] = await Promise.all([
+    const [a, o, b, vb] = await Promise.all([
       supabase.from('approvals').select('*').eq('project_id', project.id).neq('status', 'cancelled').order('created_at', { ascending: false }),
       supabase.from('approval_options').select('*').eq('project_id', project.id).order('position'),
       supabase.from('bills').select('*').eq('project_id', project.id).eq('status', 'due').order('number'),
+      supabase.from('bills').select('id,number,amount,status,approval_id').eq('project_id', project.id).not('approval_id', 'is', null),
     ]);
-    setData({ approvals: a.data || [], options: o.data || [], bills: b.data || [] });
+    setData({ approvals: a.data || [], options: o.data || [], bills: (b.data || []).filter((x) => Number(x.amount) > 0), vbills: vb.data || [] });
   }, [project.id]);
 
   useEffect(() => {
@@ -31,6 +33,14 @@ export default function Approvals() {
   const open = data.approvals.filter((a) => a.status === 'open');
   const done = data.approvals.filter((a) => a.status === 'decided');
   const optionsOf = (id) => data.options.filter((o) => o.approval_id === id);
+
+  async function cancelChoice(a, o, bill) {
+    const billLine = bill ? `\n\nBill ${String(bill.number).padStart(2, '0')} (${inr(bill.amount)}) for this change will be cancelled.` : '';
+    if (!window.confirm(`Cancel your choice "${o?.name || ''}" for "${a.title}"?${billLine}\n\nThe decision will open again so you can choose afresh. Your project manager will be told.`)) return;
+    setErr(null);
+    const { error: e } = await supabase.rpc('undo_decision', { p_approval: a.id });
+    if (e) setErr(e); else load();
+  }
 
   return (
     <div className="screen no-tabs">
@@ -53,16 +63,22 @@ export default function Approvals() {
 
         {done.length > 0 && (
           <>
-            <div className="section-label">Earlier</div>
+            <div className="section-label">Already chosen</div>
+            <ErrorBox error={err} />
             <div className="card flush">
               {done.map((a) => {
                 const o = data.options.find((x) => x.id === a.chosen_option_id);
                 const v = Number(o?.cost_delta || 0);
+                const bill = data.vbills.find((x) => x.approval_id === a.id);
+                const paid = bill?.status === 'paid';
                 return (
                   <div key={a.id} className="list-row" style={{ alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 14 }}>{a.reference ? `${a.reference} · ` : ''}{a.title}</div>
                       <div className="small muted">{o ? o.name : ''}{a.decided_at ? ` · ${longDate(a.decided_at)}` : ''}</div>
+                      {paid
+                        ? <div className="small muted" style={{ marginTop: 4 }}>Paid — contact your project manager to change this.</div>
+                        : <button className="linkish small" style={{ padding: '6px 0', color: '#b42318', fontWeight: 600 }} onClick={() => cancelChoice(a, o, bill)}>Cancel choice</button>}
                     </div>
                     <span style={{ fontWeight: 600, fontSize: 14, color: v < 0 ? 'var(--green)' : 'var(--ink)' }}>{v === 0 ? 'No change' : delta(v)}</span>
                   </div>
