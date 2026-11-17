@@ -232,3 +232,8 @@ h1, h2, h3 { font-family: var(--display); margin: 0; }
 .pay-warn-cta { background: #b42318; color: #fff; font-weight: 700; font-size: 13px; padding: 7px 12px; border-radius: 18px; flex: none; }
 /* delete button on admin photo thumbnails */
 .thumb-x { position: absolute; top: 2px; right: 2px; width: 22px; height: 22px; border-radius: 11px; border: 0; background: rgba(0,0,0,0.65); color: #fff; font-size: 15px; line-height: 1; cursor: pointer; }
+
+/* Work-in-progress bars on the client home screen */
+.wip-bar { height: 8px; border-radius: 4px; background: #efe8e2; overflow: hidden; }
+.wip-bar > div { height: 100%; border-radius: 4px; background: #d9822b; transition: width .4s; }
+.wip-bar.overall > div { background: #1f7a4d; }
