@@ -26,7 +26,8 @@ export default function Home() {
       supabase.from('cameras').select('id,name').eq('project_id', pid).eq('active', true).order('position').limit(1),
       supabase.from('site_logs').select('*').eq('project_id', pid).order('log_date', { ascending: false }).order('created_at', { ascending: false }).limit(1),
       loadVariations(pid),
-    ]).then(async ([u, ph, ap, b, cam, lg, vo]) => {
+      supabase.from('stages').select('id,name,status,progress,start_date,end_date,position').eq('project_id', pid).order('position'),
+    ]).then(async ([u, ph, ap, b, cam, lg, vo, st]) => {
       if (!live) return;
       const latest = u.data?.[0] || null;
       const bills = b.data || [];
@@ -34,7 +35,7 @@ export default function Home() {
       const logPhotos = log ? ((await supabase.from('site_log_photos').select('*').eq('log_id', log.id).order('created_at')).data || []) : [];
       if (!live) return;
       setD({
-        log, logPhotos, vo,
+        log, logPhotos, vo, stages: st.data || [],
         latest,
         photos: (ph.data || []).filter((p) => !latest || p.update_id === latest.id),
         approvals: ap.data || [],
@@ -85,15 +86,11 @@ export default function Home() {
           </select>
         )}
         <h1>{project.name}{project.location ? `, ${project.location}` : ''}</h1>
-        <div className="between" style={{ fontSize: 13 }}>
-          <span>{project.stage_label}</span><span style={{ fontWeight: 600 }}>{pct}% complete</span>
-        </div>
-        <div className="bar" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Project progress">
-          <div style={{ width: `${pct}%` }} />
-        </div>
       </header>
 
       <div className="content" style={{ paddingTop: 16 }}>
+        <WorkInProgress stages={d?.stages} pct={pct} />
+
         <Link to="/live" className="live-card" aria-label="Watch the live site camera">
           {d?.lastPhoto && <Photo path={d.lastPhoto.path} className="thumb" alt="" />}
           <div className="live-badge">{d?.camera ? `● LIVE · ${d.camera.name}` : 'Latest site photo'}</div>
@@ -207,5 +204,43 @@ export function PhotoBrowser({ photos, start, onClose }) {
         </div>
       )}
     </>
+  );
+}
+
+// Stages being worked on right now, each with its own %, plus overall progress
+function WorkInProgress({ stages, pct }) {
+  if (!stages) return null;
+  const cur = stages.filter((s) => s.status === 'current');
+  const next = stages.find((s) => s.status === 'upcoming');
+  const done = stages.filter((s) => s.status === 'done').length;
+  const dates = (s) => s.start_date && s.end_date ? `${shortDate(s.start_date)} – ${shortDate(s.end_date)}`
+    : s.end_date ? `Till ${shortDate(s.end_date)}` : s.start_date ? `From ${shortDate(s.start_date)}` : '';
+  return (
+    <Link to="/progress" className="card tile-link" style={{ gap: 10 }}>
+      <div className="between" style={{ alignItems: 'baseline' }}>
+        <span className="card-title">{cur.length ? 'Work in progress' : 'Construction progress'}</span>
+        {stages.length > 0 && <span className="small muted">{done} of {stages.length} stages done</span>}
+      </div>
+      {cur.map((s) => (
+        <div key={s.id} style={{ display: 'grid', gap: 4 }}>
+          <div className="between" style={{ gap: 8 }}>
+            <span style={{ fontWeight: 600, fontSize: 14.5 }}>{s.name}</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--maroon, #8a1c22)' }}>{s.progress}%</span>
+          </div>
+          <div className="wip-bar" role="progressbar" aria-valuenow={s.progress} aria-valuemin={0} aria-valuemax={100} aria-label={`${s.name} progress`}>
+            <div style={{ width: `${s.progress}%` }} />
+          </div>
+          {dates(s) && <span className="small muted">{dates(s)}</span>}
+        </div>
+      ))}
+      {!cur.length && next && <div className="small">Next stage: <b>{next.name}</b>{dates(next) ? ` · ${dates(next)}` : ''}</div>}
+      {!cur.length && !next && stages.length > 0 && <div className="small">All stages completed.</div>}
+      <div style={{ display: 'grid', gap: 4, borderTop: '1px solid var(--line, #e7e2dc)', paddingTop: 8 }}>
+        <div className="between"><span className="small" style={{ fontWeight: 600 }}>Overall project</span><span style={{ fontWeight: 700 }}>{pct}%</span></div>
+        <div className="wip-bar overall" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Overall project progress">
+          <div style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+    </Link>
   );
 }
