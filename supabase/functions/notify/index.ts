@@ -42,7 +42,10 @@ Deno.serve(async (req) => {
   try { ({ id } = await req.json()); } catch { /* ignore */ }
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json({ ok: false, error: 'bad id' }, 400);
 
-  const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
+  // Server key: legacy service_role, or the new secret key ("default")
+  let serverKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+  if (!serverKey) { try { serverKey = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}').default || ''; } catch { /* ignore */ } }
+  const sb = createClient(Deno.env.get('SUPABASE_URL')!, serverKey, {
     auth: { persistSession: false },
   });
 
