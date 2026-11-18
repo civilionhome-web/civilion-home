@@ -7,11 +7,13 @@ import { greeting, inr, lakhs, shortDate, longDate } from '../../lib/format';
 import { daysInclusive, todayStr } from '../../lib/schedule';
 import { LogEntry } from './SiteLog';
 import { loadVariations } from '../../lib/variations';
+import { Bell, useUnread } from './Notifications';
 import { Icon, Logo, Photo, Lightbox } from '../../components/ui';
 
 export default function Home() {
   const { project, projects, setProjectId } = useProject();
-  const { profile, signOut, isStaff } = useAuth();
+  const { profile, signOut, isStaff, user } = useAuth();
+  const unread = useUnread(project?.id, user?.id);
   const [d, setD] = useState(null);
   const [lightbox, setLightbox] = useState(null);
 
@@ -77,6 +79,7 @@ export default function Home() {
           </div>
           <div className="row" style={{ gap: 6 }}>
             {isStaff && <Link to="/admin" className="round-btn" style={{ width: 'auto', padding: '0 12px', borderRadius: 22, fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>Admin</Link>}
+            <Bell count={unread} />
             <button className="round-btn" aria-label="Sign out" onClick={() => { if (window.confirm('Sign out of Civilion Home?')) signOut(); }}><Icon name="logout" size={20} /></button>
           </div>
         </div>
