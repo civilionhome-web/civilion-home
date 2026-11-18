@@ -15,6 +15,7 @@ import Approvals from './pages/client/Approvals';
 import Chat from './pages/client/Chat';
 import Documents from './pages/client/Documents';
 import SiteLog from './pages/client/SiteLog';
+import Notifications from './pages/client/Notifications';
 import AdminLayout from './pages/admin/AdminLayout';
 import ProjectsList from './pages/admin/ProjectsList';
 import ProjectAdmin from './pages/admin/ProjectAdmin';
@@ -59,6 +60,7 @@ function App() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/documents" element={<Documents />} />
             <Route path="/site-log" element={<SiteLog />} />
+            <Route path="/notifications" element={<Notifications />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
