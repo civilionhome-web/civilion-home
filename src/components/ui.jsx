@@ -83,6 +83,16 @@ export function Photo({ path, alt = '', className, style, onClick }) {
   return onClick ? <button type="button" onClick={onClick} style={{ border: 0, padding: 0, background: 'none', display: 'block', width: '100%', height: '100%', cursor: 'pointer' }} aria-label={alt || 'Open photo'}>{img}</button> : img;
 }
 
+// Plays a private video (site log). Shows the first frame until played.
+export function VideoClip({ path, style, small = false }) {
+  const url = useSignedUrl(path);
+  if (!url) return <span style={{ display: 'block', background: '#2b2523', borderRadius: 10, aspectRatio: '16 / 9', ...style }} />;
+  return (
+    <video src={`${url}#t=0.1`} controls={!small} playsInline preload="metadata" muted={small}
+      style={{ width: '100%', borderRadius: 10, background: '#000', display: 'block', maxHeight: small ? 96 : 420, ...style }} />
+  );
+}
+
 export function Lightbox({ path, caption, onClose }) {
   const url = useSignedUrl(path);
   useEffect(() => {
