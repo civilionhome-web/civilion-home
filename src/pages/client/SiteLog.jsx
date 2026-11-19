@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useProject } from './ClientLayout';
 import { longDate } from '../../lib/format';
-import { Icon, Photo, Spinner } from '../../components/ui';
+import { Icon, Photo, VideoClip, Spinner } from '../../components/ui';
 import { PhotoBrowser } from './Home';
 
 const WEATHER_ICON = { Sunny: '☀️', Cloudy: '⛅', 'Light rain': '🌦️', 'Heavy rain': '🌧️' };
 
-export function LogEntry({ log, photos, onOpen, compact = false }) {
+export function LogEntry({ log, photos: media, onOpen, compact = false }) {
+  const photos = media.filter((m) => m.kind !== 'video');
+  const videos = media.filter((m) => m.kind === 'video');
   const shown = compact ? photos.slice(0, 3) : photos;
   return (
     <>
@@ -18,6 +20,17 @@ export function LogEntry({ log, photos, onOpen, compact = false }) {
       <div style={{ fontSize: 14, lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>{log.work_done}</div>
       {!compact && log.materials && <div className="small"><span className="muted">Materials received:</span> {log.materials}</div>}
       {!compact && log.remarks && <div className="small"><span className="muted">Remarks:</span> {log.remarks}</div>}
+      {videos.length > 0 && !compact && (
+        <div style={{ display: 'grid', gap: 8 }}>
+          {videos.map((v) => <VideoClip key={v.id} path={v.path} />)}
+        </div>
+      )}
+      {videos.length > 0 && compact && (
+        <div style={{ display: 'grid', gap: 6 }}>
+          <VideoClip path={videos[0].path} />
+          {videos.length > 1 && <span className="small muted">+{videos.length - 1} more video{videos.length > 2 ? 's' : ''} in the daily log</span>}
+        </div>
+      )}
       {shown.length > 0 && (
         <div className="photo-grid">
           {shown.map((p, i) => (
