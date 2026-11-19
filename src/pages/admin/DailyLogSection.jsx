@@ -3,7 +3,10 @@ import { supabase, must } from '../../lib/supabase';
 import { uploadFile, removeFile } from '../../lib/files';
 import { longDate } from '../../lib/format';
 import { todayStr } from '../../lib/schedule';
-import { Photo, Spinner, ErrorBox, Icon } from '../../components/ui';
+import { Photo, VideoClip, Spinner, ErrorBox, Icon } from '../../components/ui';
+
+const MAX_VIDEO_MB = 50;   // Supabase free plan upload limit per file
+const isVideo = (f) => (f.type || '').startsWith('video/') || /\.(mp4|mov|m4v|webm|3gp)$/i.test(f.name || '');
 
 export const WEATHER = ['Sunny', 'Cloudy', 'Light rain', 'Heavy rain'];
 const EMPTY = { id: null, log_date: '', weather: 'Sunny', workers: '', work_done: '', materials: '', remarks: '' };
@@ -34,11 +37,19 @@ export default function DailyLogSection({ project, say }) {
     try { await fn(); return true; } catch (e) { setError(e); return false; } finally { setBusy(false); setProgress(''); }
   }
 
+  function checkFiles(list) {
+    const big = [...list].filter((f) => isVideo(f) && f.size > MAX_VIDEO_MB * 1024 * 1024);
+    if (big.length) throw new Error(`${big.map((f) => `${f.name} (${Math.round(f.size / 1048576)} MB)`).join(', ')}: videos must be under ${MAX_VIDEO_MB} MB. Record a shorter clip (about 30–40 seconds) or set the phone camera to 720p / 1080p.`);
+  }
+
   async function addPhotos(logId, list) {
+    checkFiles(list);
     for (let i = 0; i < list.length; i++) {
-      setProgress(`Uploading photo ${i + 1} of ${list.length}…`);
-      const path = await uploadFile(project.id, 'daily-log', list[i]);
-      await must(supabase.from('site_log_photos').insert({ log_id: logId, project_id: project.id, path }));
+      const f = list[i];
+      const video = isVideo(f);
+      setProgress(`Uploading ${video ? `video (${Math.round(f.size / 1048576)} MB)` : 'photo'} ${i + 1} of ${list.length}…${video ? ' This can take a minute on mobile data.' : ''}`);
+      const path = await uploadFile(project.id, 'daily-log', f);
+      await must(supabase.from('site_log_photos').insert({ log_id: logId, project_id: project.id, path, kind: video ? 'video' : 'image' }));
     }
   }
 
@@ -51,6 +62,7 @@ export default function DailyLogSection({ project, say }) {
     };
     const editing = !!f.id;
     const ok = await act(async () => {
+      checkFiles(files);
       const saved = editing
         ? await must(supabase.from('site_logs').update(row).eq('id', f.id).select().single())
         : await must(supabase.from('site_logs').insert(row).select().single());
@@ -70,7 +82,7 @@ export default function DailyLogSection({ project, say }) {
   }
 
   async function removePhoto(p) {
-    if (!window.confirm('Delete this photo?')) return;
+    if (!window.confirm(p.kind === 'video' ? 'Delete this video?' : 'Delete this photo?')) return;
     if (await act(() => must(supabase.from('site_log_photos').delete().eq('id', p.id)))) { await removeFile(p.path); reload(); }
   }
 
@@ -110,10 +122,13 @@ export default function DailyLogSection({ project, say }) {
           <label className="field"><span>Materials received (optional)</span><input className="input" value={f.materials} onChange={set('materials')} placeholder="Cement 120 bags, M-sand 1 load" /></label>
           <label className="field"><span>Remarks / issues (optional)</span><input className="input" value={f.remarks} onChange={set('remarks')} placeholder="Power cut 2–4 pm" /></label>
         </div>
-        <label className="field"><span>Photos {f.id ? '(added to the photos already there)' : ''} — you can pick many; they’re resized automatically</span>
-          <input ref={fileInput} type="file" accept="image/*" multiple onChange={(e) => setFiles([...e.target.files])} />
+        <label className="field"><span>Photos and videos {f.id ? '(added to the ones already there)' : ''} — pick as many as you like. Photos are resized automatically; each video must be under {MAX_VIDEO_MB} MB (about 30–40 seconds).</span>
+          <input ref={fileInput} type="file" accept="image/*,video/*" multiple onChange={(e) => setFiles([...e.target.files])} />
         </label>
-        {files.length > 0 && <div className="small">{files.length} photo{files.length > 1 ? 's' : ''} selected</div>}
+        {files.length > 0 && (() => {
+          const v = files.filter(isVideo).length, p = files.length - v;
+          return <div className="small">{[p && `${p} photo${p > 1 ? 's' : ''}`, v && `${v} video${v > 1 ? 's' : ''}`].filter(Boolean).join(' and ')} selected</div>;
+        })()}
         {progress && <div className="small">{progress}</div>}
         <ErrorBox error={error} />
         <div className="toolbar">
@@ -129,7 +144,9 @@ export default function DailyLogSection({ project, say }) {
           <div key={log.id} className="card">
             <div className="between" style={{ flexWrap: 'wrap', gap: 6 }}>
               <b>{longDate(log.log_date)}</b>
-              <span className="small muted">{[log.weather, log.workers != null ? `${log.workers} workers` : '', ph.length ? `${ph.length} photo${ph.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · ')}</span>
+              <span className="small muted">{[log.weather, log.workers != null ? `${log.workers} workers` : '',
+                ph.filter((x) => x.kind !== 'video').length ? `${ph.filter((x) => x.kind !== 'video').length} photo(s)` : '',
+                ph.filter((x) => x.kind === 'video').length ? `${ph.filter((x) => x.kind === 'video').length} video(s)` : ''].filter(Boolean).join(' · ')}</span>
             </div>
             <div style={{ whiteSpace: 'pre-wrap', fontSize: 14 }}>{log.work_done}</div>
             {log.materials && <div className="small"><span className="muted">Materials:</span> {log.materials}</div>}
@@ -138,15 +155,17 @@ export default function DailyLogSection({ project, say }) {
               <div className="thumbs">
                 {ph.map((p) => (
                   <span key={p.id} style={{ position: 'relative', display: 'inline-block' }}>
-                    <Photo path={p.path} alt="" />
-                    <button type="button" className="thumb-x" aria-label="Delete photo" onClick={() => removePhoto(p)}>×</button>
+                    {p.kind === 'video'
+                      ? <span style={{ position: 'relative', display: 'block', width: 132 }}><VideoClip path={p.path} small /><span className="video-badge">▶ Video</span></span>
+                      : <Photo path={p.path} alt="" />}
+                    <button type="button" className="thumb-x" aria-label={p.kind === 'video' ? 'Delete video' : 'Delete photo'} onClick={() => removePhoto(p)}>×</button>
                   </span>
                 ))}
               </div>
             )}
             <div className="toolbar">
               <label className="btn ghost small" style={{ cursor: 'pointer' }}>
-                Add photos<input type="file" accept="image/*" multiple hidden onChange={(e) => { morePhotos(log, e.target.files); e.target.value = ''; }} />
+                Add photos / videos<input type="file" accept="image/*,video/*" multiple hidden onChange={(e) => { morePhotos(log, e.target.files); e.target.value = ''; }} />
               </label>
               <button className="btn ghost small" onClick={() => edit(log)}>Edit</button>
               <button className="btn danger small" disabled={busy} onClick={() => remove(log)} aria-label="Delete log"><Icon name="trash" size={16} /></button>
