@@ -21,6 +21,7 @@ import ProjectsList from './pages/admin/ProjectsList';
 import ProjectAdmin from './pages/admin/ProjectAdmin';
 import Team from './pages/admin/Team';
 import DayPlanner from './pages/admin/DayPlanner';
+import StaffAlerts from './pages/admin/StaffAlerts';
 
 function RequireAuth({ children, staff = false }) {
   const { session, loading, isStaff, profile } = useAuth();
@@ -52,6 +53,7 @@ function App() {
             <Route path="project/:id" element={<ProjectAdmin />} />
             <Route path="team" element={<Team />} />
             <Route path="planner" element={<DayPlanner />} />
+            <Route path="alerts" element={<StaffAlerts />} />
           </Route>
           <Route element={<RequireAuth><ClientLayout /></RequireAuth>}>
             <Route path="/" element={<Home />} />
