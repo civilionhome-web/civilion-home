@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase, must } from '../../lib/supabase';
 import { useAuth } from '../../lib/auth';
 import { addDays, todayStr } from '../../lib/schedule';
 import { longDate, shortDate } from '../../lib/format';
 import { tomorrowStr, dayName, planWorkers, boardSummary, TEAM_HINTS } from '../../lib/dayplan';
 import { Spinner, ErrorBox, Icon, useToast } from '../../components/ui';
+import { PhoneAlertsCard } from './StaffAlerts';
 
 const STATUS = {
   submitted: { label: 'Waiting for review', cls: 'due' },
@@ -15,7 +17,10 @@ const blankTask = () => ({ work: '', team: '', workers: '' });
 
 export default function DayPlanner() {
   const { isAdmin, user } = useAuth();
-  const [date, setDate] = useState(tomorrowStr);
+  const [params, setParams] = useSearchParams();
+  const asked = params.get('date');
+  const [date, setDate] = useState(() => (/^\d{4}-\d{2}-\d{2}$/.test(asked || '') ? asked : tomorrowStr()));
+  useEffect(() => { if (asked && /^\d{4}-\d{2}-\d{2}$/.test(asked)) { setDate(asked); setParams({}, { replace: true }); } }, [asked, setParams]);
   const [projects, setProjects] = useState(null);
   const [plans, setPlans] = useState([]);
   const [week, setWeek] = useState([]);
@@ -65,6 +70,7 @@ export default function DayPlanner() {
         {isAdmin && <button className="btn small ghost no-print" onClick={() => window.print()}>Print day plan</button>}
       </div>
       <ErrorBox error={error} />
+      <PhoneAlertsCard compact />
 
       <DateBar date={date} setDate={(d) => { setEditing(null); setDate(d); }} today={today} />
       {isAdmin && <WeekStrip today={today} date={date} week={week} siteCount={projects.length} setDate={(d) => { setEditing(null); setDate(d); }} />}
