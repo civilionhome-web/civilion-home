@@ -20,6 +20,7 @@ import AdminLayout from './pages/admin/AdminLayout';
 import ProjectsList from './pages/admin/ProjectsList';
 import ProjectAdmin from './pages/admin/ProjectAdmin';
 import Team from './pages/admin/Team';
+import DayPlanner from './pages/admin/DayPlanner';
 
 function RequireAuth({ children, staff = false }) {
   const { session, loading, isStaff, profile } = useAuth();
@@ -50,6 +51,7 @@ function App() {
             <Route index element={<ProjectsList />} />
             <Route path="project/:id" element={<ProjectAdmin />} />
             <Route path="team" element={<Team />} />
+            <Route path="planner" element={<DayPlanner />} />
           </Route>
           <Route element={<RequireAuth><ClientLayout /></RequireAuth>}>
             <Route path="/" element={<Home />} />
