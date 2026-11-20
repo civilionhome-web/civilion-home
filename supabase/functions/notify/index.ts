@@ -1,6 +1,7 @@
 // Supabase Edge Function "notify"
-// Called by the database (migration 09) with { id } of a new notification.
-// Sends it to the project's clients as a phone push and, for important kinds, an email.
+// Called by the database with { id } of a new client notification (migration 09),
+// or { staff_id } of a new staff alert (migration 12: day-plan reminders).
+// Client notifications go to the project's clients; staff alerts to that one staff member.
 // It is safe to call more than once: a notification is only sent the first time.
 //
 // Secrets to set in Supabase → Edge Functions → Secrets:
@@ -16,6 +17,8 @@ const SMTP_USER = 'ceocivilionbuilders@gmail.com';
 const FROM_NAME = 'Civilion Home';
 // Kinds that also go out by email (daily logs and stage ticks are bell + push only)
 const EMAIL_KINDS = new Set(['bill', 'credit', 'decision', 'update', 'message', 'document']);
+// Staff alerts that also go out by email (the 6 pm and 8 pm reminders)
+const STAFF_EMAIL_KINDS = new Set(['plan_reminder', 'plan_summary']);
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -36,18 +39,75 @@ function emailHtml(project: string, title: string, body: string, url: string) {
   </table></td></tr></table></body></html>`;
 }
 
-Deno.serve(async (req) => {
-  if (req.method !== 'POST') return json({ ok: false, error: 'POST only' }, 405);
-  let id: string | undefined;
-  try { ({ id } = await req.json()); } catch { /* ignore */ }
-  if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json({ ok: false, error: 'bad id' }, 400);
+const isId = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v);
 
+function serverClient() {
   // Server key: legacy service_role, or the new secret key ("default")
   let serverKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
   if (!serverKey) { try { serverKey = JSON.parse(Deno.env.get('SUPABASE_SECRET_KEYS') || '{}').default || ''; } catch { /* ignore */ } }
-  const sb = createClient(Deno.env.get('SUPABASE_URL')!, serverKey, {
-    auth: { persistSession: false },
-  });
+  return createClient(Deno.env.get('SUPABASE_URL')!, serverKey, { auth: { persistSession: false } });
+}
+
+async function pushTo(sb: any, userIds: string[], payload: string, result: any) {
+  const vapidPrivate = Deno.env.get('VAPID_PRIVATE_KEY');
+  if (!vapidPrivate) { result.notes.push('VAPID_PRIVATE_KEY not set'); return; }
+  try {
+    webpush.setVapidDetails('mailto:' + SMTP_USER, VAPID_PUBLIC_KEY, vapidPrivate);
+    if (!userIds.length) return;
+    const { data: subs } = await sb.from('push_subscriptions').select('*').in('user_id', userIds);
+    await Promise.all((subs || []).map(async (s: any) => {
+      try {
+        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 86400 });
+        result.push++;
+      } catch (e: any) {
+        result.pushFailed++;
+        if (e?.statusCode === 404 || e?.statusCode === 410) await sb.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
+        else result.notes.push('push: ' + (e?.statusCode || e?.message || e));
+      }
+    }));
+  } catch (e: any) { result.notes.push('push setup: ' + (e?.message || e)); }
+}
+
+// Staff alert (day-plan reminders): bell row already exists; send push and, for reminders, email
+async function sendStaffAlert(id: string) {
+  const sb = serverClient();
+  const { data: n, error } = await sb.from('staff_notifications')
+    .update({ sent_at: new Date().toISOString() })
+    .eq('id', id).is('sent_at', null)
+    .select('id, user_id, kind, title, body, link, profiles(email, full_name)')
+    .maybeSingle();
+  if (error) return json({ ok: false, error: error.message }, 500);
+  if (!n) return json({ ok: true, skipped: 'already sent or not found' });
+  const url = APP_URL + (n.link || '/admin/planner');
+  const result = { push: 0, pushFailed: 0, email: 0, emailFailed: 0, notes: [] as string[] };
+  await pushTo(sb, [n.user_id], JSON.stringify({ title: n.title, body: n.body, url, tag: n.kind }), result);
+
+  const to = String((n as any).profiles?.email || '').toLowerCase();
+  const smtpPass = Deno.env.get('SMTP_PASS');
+  if (STAFF_EMAIL_KINDS.has(n.kind) && to.includes('@') && smtpPass) {
+    const mailer = nodemailer.createTransport({ host: 'smtp.gmail.com', port: 465, secure: true, auth: { user: SMTP_USER, pass: smtpPass } });
+    try {
+      await mailer.sendMail({
+        from: `${FROM_NAME} <${SMTP_USER}>`, to, subject: n.title,
+        text: `${n.title}\n\n${n.body}\n\nOpen the day planner: ${url}`,
+        html: emailHtml('Day planner', n.title, n.body, url).replace('Open Civilion Home', 'Open day planner').replace('You can turn off these emails in the app under Notifications.', 'Staff reminder from the day planner.'),
+      });
+      result.email++;
+    } catch (e: any) { result.emailFailed++; result.notes.push('email: ' + (e?.message || e)); }
+    mailer.close();
+  }
+  return json({ ok: true, ...result });
+}
+
+Deno.serve(async (req) => {
+  if (req.method !== 'POST') return json({ ok: false, error: 'POST only' }, 405);
+  let body: any = {};
+  try { body = await req.json(); } catch { /* ignore */ }
+  if (isId(body?.staff_id)) return sendStaffAlert(body.staff_id);
+  const id = body?.id;
+  if (!isId(id)) return json({ ok: false, error: 'bad id' }, 400);
+
+  const sb = serverClient();
 
   // Claim the notification so it is only ever sent once
   const { data: n, error: claimErr } = await sb.from('notifications')
@@ -63,28 +123,9 @@ Deno.serve(async (req) => {
   const result = { push: 0, pushFailed: 0, email: 0, emailFailed: 0, notes: [] as string[] };
 
   // ---------- phone push
-  const vapidPrivate = Deno.env.get('VAPID_PRIVATE_KEY');
-  if (vapidPrivate) {
-    try {
-      webpush.setVapidDetails('mailto:' + SMTP_USER, VAPID_PUBLIC_KEY, vapidPrivate);
-      const { data: ids } = await sb.rpc('project_client_user_ids', { p_project: n.project_id });
-      const userIds = (ids || []).map((r: any) => (typeof r === 'string' ? r : r.project_client_user_ids));
-      if (userIds.length) {
-        const { data: subs } = await sb.from('push_subscriptions').select('*').in('user_id', userIds);
-        const payload = JSON.stringify({ title: n.title, body: n.body, url, tag: n.kind + '-' + n.project_id });
-        await Promise.all((subs || []).map(async (s: any) => {
-          try {
-            await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload, { TTL: 86400 });
-            result.push++;
-          } catch (e: any) {
-            result.pushFailed++;
-            if (e?.statusCode === 404 || e?.statusCode === 410) await sb.from('push_subscriptions').delete().eq('endpoint', s.endpoint);
-            else result.notes.push('push: ' + (e?.statusCode || e?.message || e));
-          }
-        }));
-      }
-    } catch (e: any) { result.notes.push('push setup: ' + (e?.message || e)); }
-  } else result.notes.push('VAPID_PRIVATE_KEY not set');
+  const { data: ids } = await sb.rpc('project_client_user_ids', { p_project: n.project_id });
+  const userIds = (ids || []).map((r: any) => (typeof r === 'string' ? r : r.project_client_user_ids));
+  await pushTo(sb, userIds, JSON.stringify({ title: n.title, body: n.body, url, tag: n.kind + '-' + n.project_id }), result);
 
   // ---------- email
   const smtpPass = Deno.env.get('SMTP_PASS');
