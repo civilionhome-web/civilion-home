@@ -292,3 +292,4 @@ h1, h2, h3 { font-family: var(--display); margin: 0; }
   .plan-board { grid-template-columns: 1fr 1fr; }
   .card { break-inside: avoid; }
 }
+.staff-bell { position: relative; display: inline-flex; align-items: center; opacity: 1 !important; text-decoration: none !important; }
