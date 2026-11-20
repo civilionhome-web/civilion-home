@@ -4,6 +4,8 @@ import { supabase, must } from '../../lib/supabase';
 import { Spinner, ErrorBox } from '../../components/ui';
 import { inr } from '../../lib/format';
 import { loadAllVariations } from '../../lib/variations';
+import { useAuth } from '../../lib/auth';
+import { tomorrowStr } from '../../lib/dayplan';
 
 // Default stages for a new house; staff can edit them per project.
 export const DEFAULT_STAGES = [
@@ -26,6 +28,8 @@ export default function ProjectsList() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const nav = useNavigate();
+  const { isAdmin } = useAuth();
+  const [tmr, setTmr] = useState(null);
 
   useEffect(() => {
     supabase.from('projects').select('*').order('created_at', { ascending: false }).then(({ data, error: e }) => {
@@ -33,6 +37,7 @@ export default function ProjectsList() {
       setRows(data || []);
     });
     loadAllVariations().then(setVo);
+    supabase.from('day_plans').select('project_id, status').eq('plan_date', tomorrowStr()).then(({ data }) => setTmr(data || []));
   }, []);
 
   async function create(e) {
@@ -54,6 +59,24 @@ export default function ProjectsList() {
         <label className="row small"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Show finished / archived</label>
       </div>
       <ErrorBox error={error} />
+      {tmr && (() => {
+        const active = rows.filter((r) => !r.archived).length;
+        const planned = new Set(tmr.map((t) => t.project_id)).size;
+        const waiting = tmr.filter((t) => t.status === 'submitted').length;
+        const allDone = active > 0 && planned >= active;
+        return (
+          <Link to="/admin/planner" className={`card plan-staff-nudge${allDone ? '' : ' warn'}`}>
+            <span style={{ fontSize: 22 }}>🗓️</span>
+            <div style={{ flex: 1 }}>
+              <b>Tomorrow's day plan</b>
+              <div className="small">{isAdmin
+                ? `${planned} of ${active} sites planned${waiting ? ` · ${waiting} waiting for your review` : ''}`
+                : allDone ? `You've planned all ${active} sites` : `You've planned ${planned} of ${active} sites — please fill in the rest before evening`}</div>
+            </div>
+            <span className="small" style={{ fontWeight: 600, color: 'var(--maroon)' }}>Open planner →</span>
+          </Link>
+        );
+      })()}
       <div className="form-grid">
         {list.map((p) => (
           <Link key={p.id} to={`/admin/project/${p.id}`} className="card project-card">
