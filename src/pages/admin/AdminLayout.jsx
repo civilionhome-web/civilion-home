@@ -8,6 +8,7 @@ export default function AdminLayout() {
       <header className="admin-top">
         <Link to="/admin" className="brand">Civilion Home · Admin</Link>
         <NavLink to="/admin" end>Projects</NavLink>
+        <NavLink to="/admin/planner">Day planner</NavLink>
         {isAdmin && <NavLink to="/admin/team">Team</NavLink>}
         <Link to="/">Client view</Link>
         <button className="btn small" style={{ background: 'rgba(255,255,255,0.15)' }} onClick={signOut}>
