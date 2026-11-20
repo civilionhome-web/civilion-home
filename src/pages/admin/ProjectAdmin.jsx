@@ -110,6 +110,12 @@ function Overview({ project, reloadProject, say }) {
     setBusy(false);
   }
 
+  async function toggleOverdue(e) {
+    const on = e.target.checked;
+    const { error: er } = await supabase.from('projects').update({ overdue_reminders: on }).eq('id', project.id);
+    if (er) setError(er); else { say(on ? 'Daily overdue reminder on' : 'Daily overdue reminder off'); reloadProject(); }
+  }
+
   async function toggleArchive() {
     await supabase.from('projects').update({ archived: !project.archived }).eq('id', project.id);
     reloadProject();
@@ -138,6 +144,10 @@ function Overview({ project, reloadProject, say }) {
       <label className="field"><span>How to pay (shown to the client — your bank details, IFSC, SWIFT, notes)</span>
         <textarea className="textarea" rows={6} value={f.payment_instructions || ''} onChange={set('payment_instructions')}
           placeholder={'Account name: Civilion Builders and Developers LLP\nBank: …\nAccount no: …\nIFSC: …\nSWIFT (for transfers from abroad): …'} />
+      </label>
+      <label className="row small" style={{ alignItems: 'flex-start' }}>
+        <input type="checkbox" style={{ marginTop: 3 }} checked={project.overdue_reminders !== false} onChange={toggleOverdue} />
+        <span><b>Daily overdue-payment reminder</b> — while a bill is past its due date, the client gets one reminder every morning at 10 am IST (app, phone and email). Untick if you've agreed extra time.</span>
       </label>
       <ErrorBox error={error} />
       <div className="toolbar">
