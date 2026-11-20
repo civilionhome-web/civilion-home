@@ -7,6 +7,7 @@ import { longDate, shortDate } from '../../lib/format';
 import { tomorrowStr, dayName, planWorkers, boardSummary, TEAM_HINTS } from '../../lib/dayplan';
 import { Spinner, ErrorBox, Icon, useToast } from '../../components/ui';
 import { PhoneAlertsCard } from './StaffAlerts';
+import { shareDayPlanPdf } from '../../lib/planPdf';
 
 const STATUS = {
   submitted: { label: 'Waiting for review', cls: 'due' },
@@ -54,6 +55,17 @@ export default function DayPlanner() {
 
   const siteName = useCallback((id) => projects?.find((p) => p.id === id)?.name || 'Site', [projects]);
   const summary = useMemo(() => boardSummary(plans, siteName), [plans, siteName]);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const standalone = typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone);
+
+  async function makePdf() {
+    setPdfBusy(true);
+    try {
+      const r = await shareDayPlanPdf({ date, projects, plans, names, summary, siteName });
+      if (r === 'downloaded') say('PDF downloaded');
+    } catch (e) { setError(e); }
+    setPdfBusy(false);
+  }
 
   if (!projects) return <Spinner />;
   const plansFor = (pid) => plans.filter((p) => p.project_id === pid);
@@ -67,8 +79,14 @@ export default function DayPlanner() {
           <h1>Day planner</h1>
           <div className="small muted">{isAdmin ? 'Plans from all staff for every site. Only admins see this page in full.' : 'Fill in tomorrow’s plan for each of your sites every evening. Only the admin sees these plans.'}</div>
         </div>
-        {isAdmin && <button className="btn small ghost no-print" onClick={() => window.print()}>Print day plan</button>}
+        {isAdmin && (
+          <div className="row no-print" style={{ gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button className="btn small" disabled={pdfBusy} onClick={makePdf}>{pdfBusy ? 'Making PDF…' : 'PDF / Print / WhatsApp'}</button>
+            {!standalone && <button className="btn small ghost" onClick={() => window.print()}>Print</button>}
+          </div>
+        )}
       </div>
+      <div className="print-only" style={{ marginBottom: 8 }}><b>Day plan · {longDate(date)}</b></div>
       <ErrorBox error={error} />
       <PhoneAlertsCard compact />
 
