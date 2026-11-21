@@ -310,3 +310,12 @@ h1, h2, h3 { font-family: var(--display); margin: 0; }
   .print-locked > * { display: none !important; }
   .print-locked::after { content: "This day plan is not approved yet. Printing unlocks after the admin approves it."; display: block; padding: 40px 0; font-size: 18px; }
 }
+/* Changes during the day */
+.change-list { display: flex; flex-direction: column; gap: 6px; }
+.change-row { border-left: 3px solid var(--line); background: var(--bg); border-radius: 0 10px 10px 0; padding: 8px 10px; font-size: 14px; display: flex; flex-direction: column; gap: 2px; }
+.change-row.k-hindrance { border-left-color: #c0392b; }
+.change-row.k-labour, .change-row.k-team, .change-row.k-split { border-left-color: #2f6fb3; }
+.change-row.k-machinery { border-left-color: #8a5a00; }
+.change-row.rejected { opacity: 0.6; }
+.change-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.link-btn { background: none; border: 0; padding: 0; color: var(--maroon); text-decoration: underline; cursor: pointer; align-self: flex-start; }
