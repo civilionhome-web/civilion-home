@@ -105,7 +105,7 @@ class Doc {
   }
 }
 
-function drawPlan({ date, projects, plans, names, summary, siteName, logo, offSites = [], approvedText = '' }) {
+function drawPlan({ date, projects, plans, names, summary, siteName, logo, offSites = [], approvedText = '', changeLines = [] }) {
   const doc = new Doc(`Civilion Builders and Developers · Day plan · ${longDate(date)}`);
   // header
   if (logo) { try { doc.x.drawImage(logo, W - M - 150, M - 10, 150, 150 * logo.height / logo.width); } catch { /* ignore */ } }
@@ -157,6 +157,12 @@ function drawPlan({ date, projects, plans, names, summary, siteName, logo, offSi
         ['All sites', '', String(summary.workers)]],
       { boldLast: true },
     );
+  }
+  if (changeLines.length) {
+    doc.ensure(120);
+    doc.text('Changes during the day', { size: 26, weight: 800, gap: 8 });
+    changeLines.forEach((l) => doc.text('\u2022 ' + l, { size: 20, gap: 4 }));
+    doc.y += 8;
   }
   const mats = plans.filter((x) => x.materials);
   if (mats.length || summary.equipment.length) {
