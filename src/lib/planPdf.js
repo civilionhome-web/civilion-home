@@ -105,17 +105,19 @@ class Doc {
   }
 }
 
-function drawPlan({ date, projects, plans, names, summary, siteName, logo }) {
+function drawPlan({ date, projects, plans, names, summary, siteName, logo, offSites = [], approvedText = '' }) {
   const doc = new Doc(`Civilion Builders and Developers · Day plan · ${longDate(date)}`);
   // header
   if (logo) { try { doc.x.drawImage(logo, W - M - 150, M - 10, 150, 150 * logo.height / logo.width); } catch { /* ignore */ } }
   doc.text('Civilion Builders and Developers', { size: 20, weight: 700, color: MAROON, gap: 4, maxW: W - 2 * M - 170 });
   doc.text('Day plan', { size: 44, weight: 800, gap: 2 });
-  doc.text(longDate(date), { size: 26, weight: 600, color: MUTED, gap: 14 });
+  doc.text(longDate(date), { size: 26, weight: 600, color: MUTED, gap: approvedText ? 4 : 14 });
+  if (approvedText) doc.text(approvedText, { size: 19, weight: 600, color: '#1f7a3a', gap: 12 });
   const planned = projects.filter((p) => plans.some((x) => x.project_id === p.id));
   const missing = projects.filter((p) => !plans.some((x) => x.project_id === p.id));
   doc.text(`${planned.length} of ${projects.length} sites planned  ·  ${summary.workers} workers  ·  ${summary.teams.length} teams`, { size: 22, weight: 600, gap: 6 });
   if (missing.length) doc.text(`No plan: ${missing.map((p) => p.name).join(', ')}`, { size: 20, color: '#9b1c1c', gap: 6 });
+  if (offSites.length) doc.text(`Sites off: ${offSites.map((o) => `${o.name} (${o.reason})`).join(', ')}`, { size: 20, color: MUTED, gap: 6 });
   if (summary.clashes.length) {
     doc.text('Booked at more than one site: ' + summary.clashes.map((c) => `${c.name} (${c.sites.join(', ')})`).join('; '), { size: 20, color: '#8a5a00', gap: 6 });
   }
