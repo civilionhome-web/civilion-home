@@ -37,7 +37,10 @@ export default function ProjectsList() {
       setRows(data || []);
     });
     loadAllVariations().then(setVo);
-    supabase.from('day_plans').select('project_id, status').eq('plan_date', tomorrowStr()).then(({ data }) => setTmr(data || []));
+    Promise.all([
+      supabase.from('day_plans').select('project_id, status').eq('plan_date', tomorrowStr()),
+      supabase.from('site_leaves').select('project_id, status').eq('leave_date', tomorrowStr()).neq('status', 'rejected'),
+    ]).then(([a, b]) => setTmr([...(a.data || []), ...(b.data || []).map((l) => ({ project_id: l.project_id, status: l.status === 'pending' ? 'submitted' : 'approved' }))]));
   }, []);
 
   async function create(e) {
