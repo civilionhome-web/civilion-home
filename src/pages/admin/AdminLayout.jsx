@@ -10,6 +10,8 @@ export default function AdminLayout() {
         <Link to="/admin" className="brand">Civilion Home · Admin</Link>
         <NavLink to="/admin" end>Projects</NavLink>
         <NavLink to="/admin/planner">Day planner</NavLink>
+        <NavLink to="/admin/weekly">Weekly plan</NavLink>
+        <NavLink to="/admin/dpr">DPR</NavLink>
         {isAdmin && <NavLink to="/admin/team">Team</NavLink>}
         <Link to="/">Client view</Link>
         <StaffBell />
