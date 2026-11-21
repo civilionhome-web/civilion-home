@@ -296,3 +296,17 @@ h1, h2, h3 { font-family: var(--display); margin: 0; }
 .plan-changed { align-self: flex-start; background: var(--amber-tint); color: #8a5a00; border-radius: 999px; padding: 3px 10px; font-size: 12.5px; font-weight: 600; }
 .no-print .btn { white-space: nowrap; }
 @media (max-width: 640px) { .plan-rollups { grid-template-columns: 1fr; } }
+/* Site off + day approval */
+.chip.on { background: var(--maroon); color: #fff; border-color: var(--maroon); }
+.day-approval { flex-direction: row; align-items: center; gap: 12px; }
+.day-approval.ok { background: #eaf6ee; border-color: #bfe3cb; }
+.leave-box { border-radius: 12px; padding: 10px 12px; font-size: 14px; background: var(--amber-tint); }
+.leave-box.approved { background: #eef0f2; }
+.leave-box.rejected { background: #fdecec; }
+.leave-form { display: flex; flex-direction: column; gap: 8px; background: var(--bg); border-radius: 12px; padding: 10px; }
+.leave-form .chip { height: 32px; font-size: 12.5px; }
+.site-off .plan-view { opacity: 0.55; }
+@media print {
+  .print-locked > * { display: none !important; }
+  .print-locked::after { content: "This day plan is not approved yet. Printing unlocks after the admin approves it."; display: block; padding: 40px 0; font-size: 18px; }
+}
