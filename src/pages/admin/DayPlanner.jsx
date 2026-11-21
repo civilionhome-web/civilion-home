@@ -8,6 +8,7 @@ import { tomorrowStr, dayName, planWorkers, boardSummary, TEAM_HINTS } from '../
 import { Spinner, ErrorBox, Icon, useToast } from '../../components/ui';
 import { PhoneAlertsCard } from './StaffAlerts';
 import { shareDayPlanPdf } from '../../lib/planPdf';
+import { SiteChanges, changeText } from './DayChanges';
 
 const STATUS = {
   submitted: { label: 'Waiting for review', cls: 'due' },
@@ -29,6 +30,7 @@ export default function DayPlanner() {
   const [week, setWeek] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [approval, setApproval] = useState(null);
+  const [changes, setChanges] = useState([]);
   const [names, setNames] = useState({});
   const [editing, setEditing] = useState(null);      // { project, plan|null }
   const [error, setError] = useState(null);
@@ -38,19 +40,21 @@ export default function DayPlanner() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [pr, pl, wk, lv, wl, ap] = await Promise.all([
+    const [pr, pl, wk, lv, wl, ap, ch] = await Promise.all([
       supabase.from('projects').select('id, name, location, archived').order('created_at'),
       supabase.from('day_plans').select('*').eq('plan_date', date).order('created_at'),
       supabase.from('day_plans').select('id, project_id, plan_date, status').gte('plan_date', today).lte('plan_date', addDays(today, 6)),
       supabase.from('site_leaves').select('*').eq('leave_date', date),
       supabase.from('site_leaves').select('project_id, leave_date, status').gte('leave_date', today).lte('leave_date', addDays(today, 6)),
       supabase.from('day_approvals').select('*').eq('plan_date', date).maybeSingle(),
+      supabase.from('day_changes').select('*').eq('change_date', date).order('created_at'),
     ]);
     if (pr.error || pl.error || lv.error) setError(pr.error || pl.error || lv.error);
     setProjects((pr.data || []).filter((p) => !p.archived));
     setPlans(pl.data || []);
     setLeaves(lv.data || []);
     setApproval(ap.data || null);
+    setChanges(ch.data || []);
     setWeek([...(wk.data || []), ...(wl.data || []).filter((l) => l.status !== 'rejected').map((l) => ({ project_id: l.project_id, plan_date: l.leave_date }))]);
   }, [date, today]);
   useEffect(() => { load(); }, [load]);
@@ -75,7 +79,8 @@ export default function DayPlanner() {
       if (locked) throw new Error('The PDF unlocks after the admin approves this day.');
       const offSites = leaves.filter((l) => l.status === 'approved').map((l) => ({ name: siteName(l.project_id), reason: l.reason }));
       const approvedText = approval ? `Approved by ${names[approval.approved_by] || 'admin'}, ${fmtTime(approval.approved_at)}` : 'Not yet approved by admin';
-      const r = await shareDayPlanPdf({ date, projects: projects.filter((p) => !offIds.has(p.id)), plans: workingPlans, names, summary, siteName, offSites, approvedText });
+      const changeLines = changes.filter((c) => c.status !== 'rejected').map((c) => `${siteName(c.project_id)}: ${changeText(c, siteName, c.project_id)}`);
+      const r = await shareDayPlanPdf({ date, projects: projects.filter((p) => !offIds.has(p.id)), plans: workingPlans, names, summary, siteName, offSites, approvedText, changeLines });
       if (r === 'downloaded') say('PDF downloaded');
     } catch (e) { setError(e); }
     setPdfBusy(false);
@@ -134,6 +139,18 @@ export default function DayPlanner() {
         </div>
       )}
 
+      {changes.length > 0 && (
+        <div className="card">
+          <div className="card-title">Changes during the day ({changes.length})</div>
+          {changes.map((c) => (
+            <div key={c.id} className={`small${c.status === 'rejected' ? ' muted' : ''}`} style={c.status === 'rejected' ? { textDecoration: 'line-through' } : undefined}>
+              <b>{siteName(c.project_id)}:</b> {changeText(c, siteName, c.project_id)}
+              {c.kind === 'hindrance' && c.status === 'pending' && <span className="pill due" style={{ marginLeft: 6 }}>Waiting for approval</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
       {summary.clashes.length > 0 && (
         <div className="card warn">
           <div className="card-title">Booked at more than one site</div>
@@ -159,6 +176,10 @@ export default function DayPlanner() {
               </div>
               <SiteLeave project={p} date={date} past={past} leave={leave} isAdmin={isAdmin} userId={user?.id}
                 author={leave ? names[leave.created_by] : null} say={say} onChanged={load} />
+              {!off && (
+                <SiteChanges project={p} date={date} today={today} changes={changes} projects={projects} siteName={siteName}
+                  names={names} isAdmin={isAdmin} userId={user?.id} plans={plans} say={say} onChanged={load} />
+              )}
 
               {list.map((plan) => (isEditing && editing.plan?.id === plan.id ? null : (
                 <PlanView key={plan.id} plan={plan} isAdmin={isAdmin} author={names[plan.created_by]}
