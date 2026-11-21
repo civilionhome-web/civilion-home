@@ -71,7 +71,7 @@ export default function ProjectsList() {
               <b>Tomorrow's day plan</b>
               <div className="small">{isAdmin
                 ? `${planned} of ${active} sites planned${waiting ? ` · ${waiting} waiting for your review` : ''}`
-                : allDone ? `You've planned all ${active} sites` : `You've planned ${planned} of ${active} sites — please fill in the rest before evening`}</div>
+                : allDone ? `All ${active} sites are planned` : `${planned} of ${active} sites planned — please add your sites before evening`}</div>
             </div>
             <span className="small" style={{ fontWeight: 600, color: 'var(--maroon)' }}>Open planner →</span>
           </Link>
