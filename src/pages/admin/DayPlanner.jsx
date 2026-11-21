@@ -27,6 +27,8 @@ export default function DayPlanner() {
   const [projects, setProjects] = useState(null);
   const [plans, setPlans] = useState([]);
   const [week, setWeek] = useState([]);
+  const [leaves, setLeaves] = useState([]);
+  const [approval, setApproval] = useState(null);
   const [names, setNames] = useState({});
   const [editing, setEditing] = useState(null);      // { project, plan|null }
   const [error, setError] = useState(null);
@@ -36,15 +38,20 @@ export default function DayPlanner() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [pr, pl, wk] = await Promise.all([
+    const [pr, pl, wk, lv, wl, ap] = await Promise.all([
       supabase.from('projects').select('id, name, location, archived').order('created_at'),
       supabase.from('day_plans').select('*').eq('plan_date', date).order('created_at'),
       supabase.from('day_plans').select('id, project_id, plan_date, status').gte('plan_date', today).lte('plan_date', addDays(today, 6)),
+      supabase.from('site_leaves').select('*').eq('leave_date', date),
+      supabase.from('site_leaves').select('project_id, leave_date, status').gte('leave_date', today).lte('leave_date', addDays(today, 6)),
+      supabase.from('day_approvals').select('*').eq('plan_date', date).maybeSingle(),
     ]);
-    if (pr.error || pl.error) setError(pr.error || pl.error);
+    if (pr.error || pl.error || lv.error) setError(pr.error || pl.error || lv.error);
     setProjects((pr.data || []).filter((p) => !p.archived));
     setPlans(pl.data || []);
-    setWeek(wk.data || []);
+    setLeaves(lv.data || []);
+    setApproval(ap.data || null);
+    setWeek([...(wk.data || []), ...(wl.data || []).filter((l) => l.status !== 'rejected').map((l) => ({ project_id: l.project_id, plan_date: l.leave_date }))]);
   }, [date, today]);
   useEffect(() => { load(); }, [load]);
 
@@ -55,14 +62,20 @@ export default function DayPlanner() {
   }, []);
 
   const siteName = useCallback((id) => projects?.find((p) => p.id === id)?.name || 'Site', [projects]);
-  const summary = useMemo(() => boardSummary(plans, siteName), [plans, siteName]);
+  const offIds = useMemo(() => new Set(leaves.filter((l) => l.status === 'approved').map((l) => l.project_id)), [leaves]);
+  const workingPlans = useMemo(() => plans.filter((p) => !offIds.has(p.project_id)), [plans, offIds]);
+  const summary = useMemo(() => boardSummary(workingPlans, siteName), [workingPlans, siteName]);
+  const locked = !isAdmin && !approval;
   const [pdfBusy, setPdfBusy] = useState(false);
   const standalone = typeof window !== 'undefined' && (window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone);
 
   async function makePdf() {
     setPdfBusy(true);
     try {
-      const r = await shareDayPlanPdf({ date, projects, plans, names, summary, siteName });
+      if (locked) throw new Error('The PDF unlocks after the admin approves this day.');
+      const offSites = leaves.filter((l) => l.status === 'approved').map((l) => ({ name: siteName(l.project_id), reason: l.reason }));
+      const approvedText = approval ? `Approved by ${names[approval.approved_by] || 'admin'}, ${fmtTime(approval.approved_at)}` : 'Not yet approved by admin';
+      const r = await shareDayPlanPdf({ date, projects: projects.filter((p) => !offIds.has(p.id)), plans: workingPlans, names, summary, siteName, offSites, approvedText });
       if (r === 'downloaded') say('PDF downloaded');
     } catch (e) { setError(e); }
     setPdfBusy(false);
@@ -70,7 +83,12 @@ export default function DayPlanner() {
 
   if (!projects) return <Spinner />;
   const plansFor = (pid) => plans.filter((p) => p.project_id === pid);
-  const missing = projects.filter((p) => !plansFor(p.id).length);
+  const leaveFor = (pid) => leaves.find((l) => l.project_id === pid);
+  const missing = projects.filter((p) => !plansFor(p.id).length && !(leaveFor(p.id) && leaveFor(p.id).status !== 'rejected'));
+  const workingCount = projects.length - offIds.size;
+  const plannedCount = projects.filter((p) => !offIds.has(p.id) && plansFor(p.id).length).length;
+  const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
+  const pendingPlans = workingPlans.filter((p) => p.status === 'submitted').length;
   const done = () => { setEditing(null); load(); };
 
   return (
@@ -82,21 +100,26 @@ export default function DayPlanner() {
         </div>
         {(
           <div className="row no-print" style={{ gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <button className="btn small" disabled={pdfBusy} onClick={makePdf}>{pdfBusy ? 'Making PDF…' : 'PDF / Print / WhatsApp'}</button>
-            {!standalone && <button className="btn small ghost" onClick={() => window.print()}>Print</button>}
+            {locked
+              ? <button className="btn small ghost" disabled title="Unlocks after the admin approves this day">PDF locked · waiting for approval</button>
+              : <button className="btn small" disabled={pdfBusy} onClick={makePdf}>{pdfBusy ? 'Making PDF…' : 'PDF / Print / WhatsApp'}</button>}
+            {!standalone && !locked && <button className="btn small ghost" onClick={() => window.print()}>Print</button>}
           </div>
         )}
       </div>
+      <div className={locked ? 'print-locked' : ''}>
       <div className="print-only" style={{ marginBottom: 8 }}><b>Day plan · {longDate(date)}</b></div>
       <ErrorBox error={error} />
       <PhoneAlertsCard compact />
 
       <DateBar date={date} setDate={(d) => { setEditing(null); setDate(d); }} today={today} />
       {<WeekStrip today={today} date={date} week={week} siteCount={projects.length} setDate={(d) => { setEditing(null); setDate(d); }} />}
+      <DayApproval date={date} past={past} isAdmin={isAdmin} approval={approval} names={names} say={say} onChanged={load}
+        missing={missing.length} pendingPlans={pendingPlans} pendingLeaves={pendingLeaves} />
 
       {(
         <div className="plan-stats">
-          <Stat label="Sites planned" value={`${projects.length - missing.length} / ${projects.length}`} warn={missing.length > 0} />
+          <Stat label={offIds.size ? `Sites planned (${offIds.size} off)` : 'Sites planned'} value={`${plannedCount} / ${workingCount}`} warn={missing.length > 0} />
           <Stat label="Workers planned" value={summary.workers} />
           <Stat label="Teams" value={summary.teams.length} />
           <Stat label="Clashes" value={summary.clashes.length} warn={summary.clashes.length > 0} />
@@ -126,12 +149,16 @@ export default function DayPlanner() {
           const list = plansFor(p.id);
           const mine = list.find((x) => x.created_by === user?.id);
           const isEditing = editing && editing.project.id === p.id;
+          const leave = leaveFor(p.id);
+          const off = offIds.has(p.id);
           return (
-            <section key={p.id} className="card plan-site">
+            <section key={p.id} className={`card plan-site${off ? ' site-off' : ''}`}>
               <div className="between">
                 <div><div className="card-title">{p.name}</div><div className="small muted">{p.location || ''}</div></div>
-                {!list.length && <span className="pill upcoming">{past ? 'No plan' : 'Not planned'}</span>}
+                {off ? <span className="pill">Site off</span> : !list.length && !leave && <span className="pill upcoming">{past ? 'No plan' : 'Not planned'}</span>}
               </div>
+              <SiteLeave project={p} date={date} past={past} leave={leave} isAdmin={isAdmin} userId={user?.id}
+                author={leave ? names[leave.created_by] : null} say={say} onChanged={load} />
 
               {list.map((plan) => (isEditing && editing.plan?.id === plan.id ? null : (
                 <PlanView key={plan.id} plan={plan} isAdmin={isAdmin} author={names[plan.created_by]}
@@ -154,9 +181,132 @@ export default function DayPlanner() {
         {!projects.length && <div className="card">No active projects.</div>}
       </div>
 
-      {plans.length > 0 && <Rollups summary={summary} plans={plans} siteName={siteName} />}
+      {workingPlans.length > 0 && <Rollups summary={summary} plans={workingPlans} siteName={siteName} />}
+      </div>
       {toast}
     </>
+  );
+}
+
+const fmtTime = (t) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
+const LEAVE_REASONS = ['Heavy rain', 'Material not arrived', 'Client asked to stop', 'Labour not available', 'Holiday / function', 'Power / water not available'];
+
+function DayApproval({ date, past, isAdmin, approval, names, say, onChanged, missing, pendingPlans, pendingLeaves }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  async function approve() {
+    setBusy(true); setError(null);
+    try { await must(supabase.from('day_approvals').insert({ plan_date: date })); say('Day plan approved — staff can now make the PDF'); onChanged(); }
+    catch (e) { setError(e); } finally { setBusy(false); }
+  }
+  async function undo() {
+    if (!window.confirm('Remove the approval? Staff won\u2019t be able to make the PDF until you approve again.')) return;
+    setBusy(true); setError(null);
+    try { await must(supabase.from('day_approvals').delete().eq('plan_date', date)); say('Approval removed'); onChanged(); }
+    catch (e) { setError(e); } finally { setBusy(false); }
+  }
+  if (approval) {
+    return (
+      <div className="card day-approval ok no-print">
+        <Icon name="check" />
+        <div style={{ flex: 1 }} className="small"><b>Day plan approved</b> by {names[approval.approved_by] || 'admin'} · {fmtTime(approval.approved_at)}
+          {!isAdmin && <div>You can make the PDF of today's working sites.</div>}<ErrorBox error={error} /></div>
+        {isAdmin && <button className="btn small ghost" disabled={busy} onClick={undo}>Undo</button>}
+      </div>
+    );
+  }
+  if (!isAdmin) {
+    return (
+      <div className="card day-approval warn no-print">
+        <Icon name="alert" />
+        <div className="small"><b>Waiting for admin approval</b><div>The PDF of this day's working sites unlocks once the admin approves the day plan.</div></div>
+      </div>
+    );
+  }
+  const issues = [missing && `${missing} site${missing === 1 ? '' : 's'} without a plan`, pendingPlans && `${pendingPlans} plan${pendingPlans === 1 ? '' : 's'} not reviewed`,
+    pendingLeaves && `${pendingLeaves} site-off request${pendingLeaves === 1 ? '' : 's'} waiting`].filter(Boolean);
+  return (
+    <div className="card day-approval warn no-print">
+      <Icon name="alert" />
+      <div style={{ flex: 1 }} className="small"><b>Approve this day's plan</b>
+        <div>Staff can make the PDF only after you approve.{issues.length ? ` Still open: ${issues.join(', ')}.` : ' Everything is checked.'}</div>
+        <ErrorBox error={error} /></div>
+      {!past && <button className="btn small" disabled={busy} onClick={approve}>{busy ? 'Approving…' : 'Approve day plan'}</button>}
+      {past && <button className="btn small ghost" disabled={busy} onClick={approve}>Approve</button>}
+    </div>
+  );
+}
+
+function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, onChanged }) {
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const run = async (fn, msg) => {
+    setBusy(true); setError(null);
+    try { await fn(); if (msg) say(msg); setOpen(false); onChanged(); } catch (e) { setError(e); } finally { setBusy(false); }
+  };
+  const submit = (e) => {
+    e.preventDefault();
+    if (!reason.trim()) return setError(new Error('Write the reason the site is off.'));
+    run(() => (leave
+      ? must(supabase.from('site_leaves').update({ reason: reason.trim() }).eq('id', leave.id))
+      : must(supabase.from('site_leaves').insert({ project_id: project.id, leave_date: date, reason: reason.trim() }))),
+    isAdmin ? 'Site marked off' : 'Site-off request sent to admin');
+  };
+  const decide = (status) => run(() => must(supabase.from('site_leaves').update({ status, admin_note: note.trim() }).eq('id', leave.id)),
+    status === 'approved' ? 'Site off approved' : 'Site off rejected');
+  const remove = () => { if (window.confirm('Remove this site-off entry?')) run(() => must(supabase.from('site_leaves').delete().eq('id', leave.id)), 'Removed'); };
+  const mine = leave && leave.created_by === userId;
+
+  if (open) {
+    return (
+      <form className="leave-form no-print" onSubmit={submit}>
+        <b className="small">Site off on {longDate(date)} — reason</b>
+        <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
+          {LEAVE_REASONS.map((r) => <button type="button" key={r} className={`chip${reason === r ? ' on' : ''}`} onClick={() => setReason(r)}>{r}</button>)}
+        </div>
+        <input className="input" placeholder="Reason (you can add details)" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <ErrorBox error={error} />
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn small" disabled={busy}>{busy ? 'Saving…' : isAdmin ? 'Mark site off' : 'Send to admin'}</button>
+          <button type="button" className="btn small ghost" onClick={() => setOpen(false)}>Cancel</button>
+        </div>
+      </form>
+    );
+  }
+  if (!leave) {
+    return (!past || isAdmin) ? (
+      <button className="btn small ghost no-print" style={{ alignSelf: 'flex-start' }} onClick={() => { setReason(''); setOpen(true); }}>Mark site off (no work)</button>
+    ) : null;
+  }
+  const label = { pending: 'Site-off requested', approved: 'Site off', rejected: 'Site-off request rejected' }[leave.status];
+  return (
+    <div className={`leave-box ${leave.status}`}>
+      <div><b>{label}:</b> {leave.reason}</div>
+      <div className="small muted">By {author || 'staff'}{leave.decided_at ? ` · ${leave.status === 'approved' ? 'approved' : 'rejected'} ${fmtTime(leave.decided_at)}` : ''}</div>
+      {leave.admin_note && <div className="small"><b>Admin:</b> {leave.admin_note}</div>}
+      {isAdmin && leave.status === 'pending' && (
+        <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+          <input className="input" style={{ height: 38, fontSize: 14 }} placeholder="Note to staff (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <div className="row" style={{ gap: 6 }}>
+            <button className="btn small" disabled={busy} onClick={() => decide('approved')}>Approve site off</button>
+            <button className="btn small ghost" disabled={busy} onClick={() => decide('rejected')}>Reject</button>
+          </div>
+        </div>
+      )}
+      <div className="row no-print" style={{ gap: 6, marginTop: 4 }}>
+        {isAdmin && leave.status === 'approved' && (
+          <button className="btn small ghost" disabled={busy} onClick={() => decide('rejected')}>Cancel site off</button>
+        )}
+        {mine && !past && leave.status !== 'approved' && (
+          <button className="btn small ghost" onClick={() => { setReason(leave.reason); setOpen(true); }}>{leave.status === 'rejected' ? 'Request again' : 'Edit reason'}</button>
+        )}
+        {(isAdmin || (mine && !past && leave.status !== 'approved')) && <button className="btn small danger" disabled={busy} onClick={remove}>Remove</button>}
+      </div>
+      <ErrorBox error={error} />
+    </div>
   );
 }
 
