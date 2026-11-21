@@ -15,12 +15,14 @@ const STATUS = {
   changes: { label: 'Changes asked', cls: 'changes' },
 };
 const blankTask = () => ({ work: '', team: '', workers: '' });
+// Mornings (before 12 noon India time) open on today's plan, afternoons on tomorrow's
+const defaultDay = () => (Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' })) < 12 ? todayStr() : tomorrowStr());
 
 export default function DayPlanner() {
   const { isAdmin, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const asked = params.get('date');
-  const [date, setDate] = useState(() => (/^\d{4}-\d{2}-\d{2}$/.test(asked || '') ? asked : tomorrowStr()));
+  const [date, setDate] = useState(() => (/^\d{4}-\d{2}-\d{2}$/.test(asked || '') ? asked : defaultDay()));
   useEffect(() => { if (asked && /^\d{4}-\d{2}-\d{2}$/.test(asked)) { setDate(asked); setParams({}, { replace: true }); } }, [asked, setParams]);
   const [projects, setProjects] = useState(null);
   const [plans, setPlans] = useState([]);
@@ -47,11 +49,10 @@ export default function DayPlanner() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!isAdmin) return;
     supabase.from('profiles').select('id, full_name, role').then(({ data }) => {
       setNames(Object.fromEntries((data || []).map((p) => [p.id, p.full_name || 'Staff'])));
     });
-  }, [isAdmin]);
+  }, []);
 
   const siteName = useCallback((id) => projects?.find((p) => p.id === id)?.name || 'Site', [projects]);
   const summary = useMemo(() => boardSummary(plans, siteName), [plans, siteName]);
@@ -77,9 +78,9 @@ export default function DayPlanner() {
       <div className="between no-print-wrap">
         <div>
           <h1>Day planner</h1>
-          <div className="small muted">{isAdmin ? 'Plans from all staff for every site. Only admins see this page in full.' : 'Fill in tomorrow’s plan for each of your sites every evening. Only the admin sees these plans.'}</div>
+          <div className="small muted">{isAdmin ? 'Plans from all staff for every site. Change a plan here when things change on the day; the staff member is told.' : 'Fill in tomorrow’s plan for your sites every evening. All staff can see the full planner; only the admin can change other people’s plans.'}</div>
         </div>
-        {isAdmin && (
+        {(
           <div className="row no-print" style={{ gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <button className="btn small" disabled={pdfBusy} onClick={makePdf}>{pdfBusy ? 'Making PDF…' : 'PDF / Print / WhatsApp'}</button>
             {!standalone && <button className="btn small ghost" onClick={() => window.print()}>Print</button>}
@@ -91,9 +92,9 @@ export default function DayPlanner() {
       <PhoneAlertsCard compact />
 
       <DateBar date={date} setDate={(d) => { setEditing(null); setDate(d); }} today={today} />
-      {isAdmin && <WeekStrip today={today} date={date} week={week} siteCount={projects.length} setDate={(d) => { setEditing(null); setDate(d); }} />}
+      {<WeekStrip today={today} date={date} week={week} siteCount={projects.length} setDate={(d) => { setEditing(null); setDate(d); }} />}
 
-      {isAdmin && (
+      {(
         <div className="plan-stats">
           <Stat label="Sites planned" value={`${projects.length - missing.length} / ${projects.length}`} warn={missing.length > 0} />
           <Stat label="Workers planned" value={summary.workers} />
@@ -102,7 +103,7 @@ export default function DayPlanner() {
         </div>
       )}
 
-      {isAdmin && missing.length > 0 && (
+      {missing.length > 0 && (
         <div className="card pay-warn" style={{ alignItems: 'flex-start' }}>
           <Icon name="alert" />
           <div><b>No plan yet for {missing.length === 1 ? '1 site' : `${missing.length} sites`}</b>
@@ -110,7 +111,7 @@ export default function DayPlanner() {
         </div>
       )}
 
-      {isAdmin && summary.clashes.length > 0 && (
+      {summary.clashes.length > 0 && (
         <div className="card warn">
           <div className="card-title">Booked at more than one site</div>
           {summary.clashes.map((c) => (
@@ -140,8 +141,9 @@ export default function DayPlanner() {
 
               {isEditing ? (
                 <PlanForm project={p} date={date} plan={editing.plan} isAdmin={isAdmin} say={say}
+                  author={editing.plan && editing.plan.created_by !== user?.id ? names[editing.plan.created_by] || 'the staff member' : null}
                   onDone={done} onCancel={() => setEditing(null)} />
-              ) : (!past || isAdmin) && (!mine || isAdmin) && (
+              ) : (!past || isAdmin) && (!mine || isAdmin) && (isAdmin || !list.length || !mine) && (
                 <button className="btn small outline no-print" onClick={() => setEditing({ project: p, plan: isAdmin ? null : mine || null })}>
                   <Icon name="plus" size={18} /> {list.length ? 'Add another plan' : `Plan ${dayName(date).toLowerCase() === 'tomorrow' ? 'tomorrow' : 'this day'}`}
                 </button>
@@ -152,7 +154,7 @@ export default function DayPlanner() {
         {!projects.length && <div className="card">No active projects.</div>}
       </div>
 
-      {isAdmin && plans.length > 0 && <Rollups summary={summary} plans={plans} siteName={siteName} />}
+      {plans.length > 0 && <Rollups summary={summary} plans={plans} siteName={siteName} />}
       {toast}
     </>
   );
@@ -223,7 +225,7 @@ function PlanView({ plan, isAdmin, author, canEdit, onEdit, onChanged, say }) {
     <div className="plan-view">
       <div className="between">
         <div className="small muted">
-          {isAdmin && <><b style={{ color: 'var(--ink)' }}>{author || 'Staff'}</b> · </>}
+          <b style={{ color: 'var(--ink)' }}>{author || 'Staff'}</b> · 
           {plan.supervisor ? `In-charge: ${plan.supervisor}` : 'No in-charge named'}{plan.start_time ? ` · starts ${plan.start_time}` : ''}
         </div>
         <span className={`pill ${st.cls}`}>{st.label}</span>
@@ -243,6 +245,9 @@ function PlanView({ plan, isAdmin, author, canEdit, onEdit, onChanged, say }) {
       {plan.equipment && <Line label="Machinery / tools" text={plan.equipment} />}
       {plan.remarks && <Line label="Remarks" text={plan.remarks} />}
 
+      {plan.changed_at && (
+        <div className="plan-changed">Changed by admin · {new Date(plan.changed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}</div>
+      )}
       {!isAdmin && plan.admin_note && <div className="plan-note"><b>Admin:</b> {plan.admin_note}</div>}
 
       {isAdmin && (
@@ -252,7 +257,7 @@ function PlanView({ plan, isAdmin, author, canEdit, onEdit, onChanged, say }) {
             <button className="btn small" disabled={busy} onClick={() => review('approved')}>Approve</button>
             <button className="btn small ghost" disabled={busy} onClick={() => review('changes')}>Ask for changes</button>
             <span style={{ flex: 1 }} />
-            {canEdit && <button className="btn small ghost" onClick={onEdit}>Edit</button>}
+            {canEdit && <button className="btn small ghost" onClick={onEdit}>{plan.plan_date === todayStr() ? 'Change today’s plan' : 'Edit'}</button>}
             <button className="btn small danger" onClick={remove}>Delete</button>
           </div>
         </div>
@@ -273,11 +278,12 @@ function Line({ label, text }) {
   return <div className="small"><span className="muted">{label}: </span><span style={{ whiteSpace: 'pre-wrap' }}>{text}</span></div>;
 }
 
-function PlanForm({ project, date, plan, isAdmin, say, onDone, onCancel }) {
+function PlanForm({ project, date, plan, isAdmin, author, say, onDone, onCancel }) {
   const [f, setF] = useState(() => ({
     supervisor: plan?.supervisor || '', start_time: plan?.start_time || '08:00',
     tasks: plan?.tasks?.length ? plan.tasks.map((t) => ({ ...blankTask(), ...t, workers: t.workers ?? '' })) : [blankTask(), blankTask()],
     materials: plan?.materials || '', equipment: plan?.equipment || '', remarks: plan?.remarks || '',
+    note: plan?.admin_note || '',
   }));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -305,11 +311,12 @@ function PlanForm({ project, date, plan, isAdmin, say, onDone, onCancel }) {
     if (!tasks.length) return setError(new Error('Add at least one work for the day.'));
     const row = { supervisor: f.supervisor.trim(), start_time: f.start_time, tasks,
       materials: f.materials.trim(), equipment: f.equipment.trim(), remarks: f.remarks.trim() };
+    if (isAdmin && author) row.admin_note = f.note.trim();
     setBusy(true); setError(null);
     try {
       if (plan) await must(supabase.from('day_plans').update(row).eq('id', plan.id));
       else await must(supabase.from('day_plans').insert({ ...row, project_id: project.id, plan_date: date }));
-      say(plan ? 'Plan updated' : isAdmin ? 'Plan saved' : 'Plan sent to admin');
+      say(plan ? (isAdmin && author ? `Plan changed — ${author} has been told` : 'Plan updated') : isAdmin ? 'Plan saved' : 'Plan sent to admin');
       onDone();
     } catch (err) {
       setError(/duplicate|unique/i.test(err.message || '') ? new Error('You already have a plan for this site on this day. Edit that one instead.') : err);
@@ -353,6 +360,10 @@ function PlanForm({ project, date, plan, isAdmin, say, onDone, onCancel }) {
       <label className="field"><span>Remarks</span>
         <input className="input" placeholder="Inspection at 11 am, client visit, power shutdown…" value={f.remarks} onChange={set('remarks')} /></label>
 
+      {isAdmin && author && (
+        <label className="field"><span>What changed? (sent to {author})</span>
+          <input className="input" placeholder="e.g. Rain — 2 masons moved to Santhosh site" value={f.note} onChange={set('note')} /></label>
+      )}
       <ErrorBox error={error} />
       <div className="row" style={{ gap: 8 }}>
         <button className="btn small" disabled={busy}>{busy ? 'Saving…' : plan ? 'Save changes' : isAdmin ? 'Save plan' : 'Send plan to admin'}</button>
