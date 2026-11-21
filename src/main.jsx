@@ -22,6 +22,8 @@ import ProjectAdmin from './pages/admin/ProjectAdmin';
 import Team from './pages/admin/Team';
 import DayPlanner from './pages/admin/DayPlanner';
 import StaffAlerts from './pages/admin/StaffAlerts';
+import DprPage from './pages/admin/DprPage';
+import WeeklyPlanner from './pages/admin/WeeklyPlanner';
 
 function RequireAuth({ children, staff = false }) {
   const { session, loading, isStaff, profile } = useAuth();
@@ -54,6 +56,8 @@ function App() {
             <Route path="team" element={<Team />} />
             <Route path="planner" element={<DayPlanner />} />
             <Route path="alerts" element={<StaffAlerts />} />
+            <Route path="dpr" element={<DprPage />} />
+            <Route path="weekly" element={<WeeklyPlanner />} />
           </Route>
           <Route element={<RequireAuth><ClientLayout /></RequireAuth>}>
             <Route path="/" element={<Home />} />
