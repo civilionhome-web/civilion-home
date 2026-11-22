@@ -3,6 +3,15 @@
 // is turned into a JPEG, and the JPEGs are wrapped in a minimal PDF file.
 import { longDate } from './format';
 import { planWorkers } from './dayplan';
+import { todayStr, addDays } from './schedule';
+
+// Heading for the PDF: the evening before it is tomorrow's plan, on the day it is today's running sites.
+export function pdfHeading(date) {
+  const t = todayStr();
+  if (date === t) return 'Today running sites';
+  if (date === addDays(t, 1)) return 'Tomorrow planned sites';
+  return date > t ? 'Planned sites' : 'Day plan';
+}
 
 const W = 1240;            // A4 at 150 dpi
 const H = 1754;
@@ -106,11 +115,12 @@ class Doc {
 }
 
 function drawPlan({ date, projects, plans, names, summary, siteName, logo, offSites = [], approvedText = '', changeLines = [] }) {
-  const doc = new Doc(`Civilion Builders and Developers · Day plan · ${longDate(date)}`);
+  const heading = pdfHeading(date);
+  const doc = new Doc(`Civilion Builders and Developers · ${heading} · ${longDate(date)}`);
   // header
   if (logo) { try { doc.x.drawImage(logo, W - M - 150, M - 10, 150, 150 * logo.height / logo.width); } catch { /* ignore */ } }
   doc.text('Civilion Builders and Developers', { size: 20, weight: 700, color: MAROON, gap: 4, maxW: W - 2 * M - 170 });
-  doc.text('Day plan', { size: 44, weight: 800, gap: 2 });
+  doc.text(heading, { size: 44, weight: 800, gap: 2 });
   doc.text(longDate(date), { size: 26, weight: 600, color: MUTED, gap: approvedText ? 4 : 14 });
   if (approvedText) doc.text(approvedText, { size: 19, weight: 600, color: '#1f7a3a', gap: 12 });
   const planned = projects.filter((p) => plans.some((x) => x.project_id === p.id));
@@ -224,11 +234,11 @@ if (typeof Image !== 'undefined') {
 // Make the PDF, then share it (phones: Print / WhatsApp / Save) or download it (computers).
 export async function shareDayPlanPdf(data) {
   const blob = buildPdf(drawPlan({ ...data, logo: logoImg }));
-  const name = `Civilion day plan ${data.date}.pdf`;
+  const name = `Civilion ${pdfHeading(data.date)} ${data.date}.pdf`;
   const file = new File([blob], name, { type: 'application/pdf' });
   const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
   if (mobile && navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: `Day plan ${longDate(data.date)}` }); return 'shared'; }
+    try { await navigator.share({ files: [file], title: `${pdfHeading(data.date)} · ${longDate(data.date)}` }); return 'shared'; }
     catch (e) { if (e?.name === 'AbortError') return 'cancelled'; /* fall through to download */ }
   }
   const url = URL.createObjectURL(blob);
