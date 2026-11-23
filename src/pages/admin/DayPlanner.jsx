@@ -20,7 +20,7 @@ const blankTask = () => ({ work: '', team: '', workers: '' });
 const defaultDay = () => (Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' })) < 12 ? todayStr() : tomorrowStr());
 
 export default function DayPlanner() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isSuper, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const asked = params.get('date');
   const [date, setDate] = useState(() => (/^\d{4}-\d{2}-\d{2}$/.test(asked || '') ? asked : defaultDay()));
@@ -30,6 +30,7 @@ export default function DayPlanner() {
   const [week, setWeek] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [approval, setApproval] = useState(null);
+  const [lock, setLock] = useState(null);
   const [changes, setChanges] = useState([]);
   const [names, setNames] = useState({});
   const [editing, setEditing] = useState(null);      // { project, plan|null }
@@ -40,7 +41,7 @@ export default function DayPlanner() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [pr, pl, wk, lv, wl, ap, ch] = await Promise.all([
+    const [pr, pl, wk, lv, wl, ap, ch, lk] = await Promise.all([
       supabase.from('projects').select('id, name, location, archived').order('created_at'),
       supabase.from('day_plans').select('*').eq('plan_date', date).order('created_at'),
       supabase.from('day_plans').select('id, project_id, plan_date, status').gte('plan_date', today).lte('plan_date', addDays(today, 6)),
@@ -48,6 +49,7 @@ export default function DayPlanner() {
       supabase.from('site_leaves').select('project_id, leave_date, status').gte('leave_date', today).lte('leave_date', addDays(today, 6)),
       supabase.from('day_approvals').select('*').eq('plan_date', date).maybeSingle(),
       supabase.from('day_changes').select('*').eq('change_date', date).order('created_at'),
+      supabase.from('day_locks').select('*').eq('plan_date', date).maybeSingle(),
     ]);
     if (pr.error || pl.error || lv.error) setError(pr.error || pl.error || lv.error);
     setProjects((pr.data || []).filter((p) => !p.archived));
@@ -55,6 +57,7 @@ export default function DayPlanner() {
     setLeaves(lv.data || []);
     setApproval(ap.data || null);
     setChanges(ch.data || []);
+    setLock(lk.data || null);
     setWeek([...(wk.data || []), ...(wl.data || []).filter((l) => l.status !== 'rejected').map((l) => ({ project_id: l.project_id, plan_date: l.leave_date }))]);
   }, [date, today]);
   useEffect(() => { load(); }, [load]);
@@ -93,7 +96,7 @@ export default function DayPlanner() {
   const workingCount = projects.length - offIds.size;
   const plannedCount = projects.filter((p) => !offIds.has(p.id) && plansFor(p.id).length).length;
   const pendingLeaves = leaves.filter((l) => l.status === 'pending').length;
-  const pendingPlans = workingPlans.filter((p) => p.status === 'submitted').length;
+  const pendingPlans = workingPlans.filter((p) => p.status !== 'approved').length;
   const done = () => { setEditing(null); load(); };
 
   return (
@@ -120,7 +123,7 @@ export default function DayPlanner() {
       <DateBar date={date} setDate={(d) => { setEditing(null); setDate(d); }} today={today} />
       {<WeekStrip today={today} date={date} week={week} siteCount={projects.length} setDate={(d) => { setEditing(null); setDate(d); }} />}
       <DayApproval date={date} past={past} isAdmin={isAdmin} approval={approval} names={names} say={say} onChanged={load}
-        missing={missing.length} pendingPlans={pendingPlans} pendingLeaves={pendingLeaves} />
+        missing={missing.length} pendingPlans={pendingPlans} pendingLeaves={pendingLeaves} lock={lock} isSuper={isSuper} />
 
       {(
         <div className="plan-stats">
@@ -182,7 +185,7 @@ export default function DayPlanner() {
               )}
 
               {list.map((plan) => (isEditing && editing.plan?.id === plan.id ? null : (
-                <PlanView key={plan.id} plan={plan} isAdmin={isAdmin} author={names[plan.created_by]}
+                <PlanView key={plan.id} plan={plan} isAdmin={isAdmin} isSuper={isSuper} author={names[plan.created_by]}
                   canEdit={isAdmin || (!past && plan.created_by === user?.id)}
                   onEdit={() => setEditing({ project: p, plan })} onChanged={() => { load(); }} say={say} />
               )))}
@@ -212,7 +215,7 @@ export default function DayPlanner() {
 const fmtTime = (t) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 const LEAVE_REASONS = ['Heavy rain', 'Material not arrived', 'Client asked to stop', 'Labour not available', 'Holiday / function', 'Power / water not available'];
 
-function DayApproval({ date, past, isAdmin, approval, names, say, onChanged, missing, pendingPlans, pendingLeaves }) {
+function DayApproval({ date, past, isAdmin, approval, names, say, onChanged, missing, pendingPlans, pendingLeaves, lock, isSuper }) {
   const t0 = todayStr();
   const when = date === t0 ? 'today' : date === addDays(t0, 1) ? 'tomorrow' : null;
   const label = when ? `${when === 'today' ? 'Today' : 'Tomorrow'}’s plan` : 'Day plan';
@@ -235,9 +238,9 @@ function DayApproval({ date, past, isAdmin, approval, names, say, onChanged, mis
       <div className="card day-approval ok no-print">
         <Icon name="check" />
         <div style={{ flex: 1 }} className="small"><b>{label} approved · {day}</b> · by {names[approval.approved_by] || 'admin'}, {fmtTime(approval.approved_at)}
-          {!isAdmin && when === 'tomorrow' && <div>Make the “Tomorrow planned sites” PDF now. Tomorrow morning, if nothing changes, just make the “Today running sites” PDF — no new approval needed. If you change anything, the admin must approve again.</div>}
-          {!isAdmin && when === 'today' && <div>You can make the “Today running sites” PDF. If you change anything now, the admin must approve again.</div>}
-          {isAdmin && when === 'tomorrow' && <div>Tomorrow morning staff print it as “Today running sites”. If they change anything, you’ll be asked to approve again.</div>}<ErrorBox error={error} /></div>
+          {!isAdmin && when === 'tomorrow' && <div>Make the “Tomorrow planned sites” PDF now. Tomorrow morning, if nothing changes, just make the “Today running sites” PDF — no new approval needed. If you change anything, the super admin must approve again.</div>}
+          {!isAdmin && when === 'today' && <div>You can make the “Today running sites” PDF. If you change anything now, the super admin must approve again.</div>}
+          {isAdmin && when === 'tomorrow' && <div>Tomorrow morning staff print it as “Today running sites”. If they change anything, the super admin must approve again.</div>}<ErrorBox error={error} /></div>
         {isAdmin && <button className="btn small ghost" disabled={busy} onClick={undo}>Undo</button>}
       </div>
     );
@@ -250,15 +253,16 @@ function DayApproval({ date, past, isAdmin, approval, names, say, onChanged, mis
       </div>
     );
   }
-  const issues = [missing && `${missing} site${missing === 1 ? '' : 's'} without a plan`, pendingPlans && `${pendingPlans} plan${pendingPlans === 1 ? '' : 's'} not reviewed`,
+  const issues = [missing && `${missing} site${missing === 1 ? '' : 's'} without a plan or site off`, pendingPlans && `${pendingPlans} site plan${pendingPlans === 1 ? '' : 's'} not approved`,
     pendingLeaves && `${pendingLeaves} site-off request${pendingLeaves === 1 ? '' : 's'} waiting`].filter(Boolean);
   return (
     <div className="card day-approval warn no-print">
       <Icon name="alert" />
       <div style={{ flex: 1 }} className="small"><b>Approve {when ? `${when}’s plan` : 'this day’s plan'} · {day}</b>
-        <div>Staff can make the PDF only after you approve.{issues.length ? ` Still open: ${issues.join(', ')}.` : ' Everything is checked.'}</div>
+        {lock && <div className="plan-changed" style={{ margin: '4px 0' }}>Changed after approval: {lock.site}. {isSuper ? 'Approve the changed plan(s), then the day.' : 'Only the super admin can approve this day again.'}</div>}
+        <div>{issues.length ? `Approve every site first. Still open: ${issues.join(', ')}.` : 'Every site is approved. Staff can make the PDF once you approve the day.'}</div>
         <ErrorBox error={error} /></div>
-      {!past && <button className="btn small" disabled={busy} onClick={approve}>{busy ? 'Approving…' : `Approve ${when ? `${when}’s plan` : 'day plan'} (${day})`}</button>}
+      {!past && (!lock || isSuper) && <button className="btn small" disabled={busy || issues.length > 0} onClick={approve}>{busy ? 'Approving…' : `Approve ${when ? `${when}’s plan` : 'day plan'} (${day})`}</button>}
       {past && <button className="btn small ghost" disabled={busy} onClick={approve}>Approve</button>}
     </div>
   );
@@ -277,7 +281,7 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
   const submit = (e) => {
     e.preventDefault();
     if (!reason.trim()) return setError(new Error('Write the reason the site is off.'));
-    if (!isAdmin && approved && !window.confirm(`${longDate(date)} is already approved. If you send this, the admin must approve the day again before you can make the PDF. Send it?`)) return;
+    if (!isAdmin && approved && !window.confirm(`${longDate(date)} is already approved. If you send this, the super admin must approve the day again before you can make the PDF. Send it?`)) return;
     run(() => (leave
       ? must(supabase.from('site_leaves').update({ reason: reason.trim() }).eq('id', leave.id))
       : must(supabase.from('site_leaves').insert({ project_id: project.id, leave_date: date, reason: reason.trim() }))),
@@ -379,7 +383,7 @@ function WeekStrip({ today, date, week, siteCount, setDate }) {
   );
 }
 
-function PlanView({ plan, isAdmin, author, canEdit, onEdit, onChanged, say }) {
+function PlanView({ plan, isAdmin, isSuper, author, canEdit, onEdit, onChanged, say }) {
   const st = STATUS[plan.status] || STATUS.submitted;
   const [note, setNote] = useState(plan.admin_note || '');
   const [busy, setBusy] = useState(false);
@@ -426,13 +430,16 @@ function PlanView({ plan, isAdmin, author, canEdit, onEdit, onChanged, say }) {
       {plan.changed_at && (
         <div className="plan-changed">Changed by admin · {new Date(plan.changed_at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' })}</div>
       )}
+      {plan.needs_super && plan.status !== 'approved' && (
+        <div className="plan-changed">Changed after the day was approved · {isSuper ? 'needs your approval' : 'only the super admin can approve this'}</div>
+      )}
       {!isAdmin && plan.admin_note && <div className="plan-note"><b>Admin:</b> {plan.admin_note}</div>}
 
       {isAdmin && (
         <div className="plan-review no-print">
           <input className="input" style={{ height: 40, fontSize: 14 }} placeholder="Note to staff (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="row" style={{ flexWrap: 'wrap', gap: 6 }}>
-            <button className="btn small" disabled={busy} onClick={() => review('approved')}>Approve</button>
+            {(!plan.needs_super || isSuper) && <button className="btn small" disabled={busy} onClick={() => review('approved')}>Approve</button>}
             <button className="btn small ghost" disabled={busy} onClick={() => review('changes')}>Ask for changes</button>
             <span style={{ flex: 1 }} />
             {canEdit && <button className="btn small ghost" onClick={onEdit}>{plan.plan_date === todayStr() ? 'Change today’s plan' : 'Edit'}</button>}
@@ -490,7 +497,7 @@ function PlanForm({ project, date, plan, isAdmin, author, say, onDone, onCancel,
     const row = { supervisor: f.supervisor.trim(), start_time: f.start_time, tasks,
       materials: f.materials.trim(), equipment: f.equipment.trim(), remarks: f.remarks.trim() };
     if (isAdmin && author) row.admin_note = f.note.trim();
-    if (!isAdmin && approved && !window.confirm(`${longDate(date)} is already approved. If you save this change, the admin must approve the day again before you can make the PDF. Save the change?`)) return;
+    if (!isAdmin && approved && !window.confirm(`${longDate(date)} is already approved. If you save this change, the super admin must approve it and the day again before you can make the PDF. Save the change?`)) return;
     setBusy(true); setError(null);
     try {
       if (plan) await must(supabase.from('day_plans').update(row).eq('id', plan.id));
