@@ -8,6 +8,7 @@ import { longDate } from '../../lib/format';
 import { dayName } from '../../lib/dayplan';
 import { Spinner, ErrorBox, Icon, useToast } from '../../components/ui';
 import { changeText } from './DayChanges';
+import { shareDprPdf } from '../../lib/planPdf';
 
 const WORK_STATUS = { done: 'Done', partly: 'Partly done', not_done: 'Not done', extra: 'Extra work' };
 const labourTotal = (r) => (r.labour || []).reduce((s, l) => s + (parseInt(l.count, 10) || 0), 0);
@@ -28,15 +29,16 @@ export default function DprPage() {
 
   const load = useCallback(async () => {
     setError(null);
-    const [pr, dp, rp, lv, ch] = await Promise.all([
+    const [pr, dp, rp, lv, ch, cr] = await Promise.all([
       supabase.from('projects').select('id, name, location, archived').order('created_at'),
       supabase.from('day_plans').select('*').eq('plan_date', date),
       supabase.from('dprs').select('*').eq('report_date', date).order('created_at'),
       supabase.from('site_leaves').select('project_id, reason, status').eq('leave_date', date).eq('status', 'approved'),
       supabase.from('day_changes').select('*').eq('change_date', date).neq('status', 'rejected'),
+      supabase.from('dpr_reports').select('*').eq('report_date', date).maybeSingle(),
     ]);
     if (pr.error || rp.error) setError(pr.error || rp.error);
-    setData({ projects: (pr.data || []).filter((p) => !p.archived), plans: dp.data || [], dprs: rp.data || [], leaves: lv.data || [], changes: ch.data || [] });
+    setData({ projects: (pr.data || []).filter((p) => !p.archived), plans: dp.data || [], dprs: rp.data || [], leaves: lv.data || [], changes: ch.data || [], report: cr.data || null });
   }, [date]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -107,6 +109,8 @@ export default function DprPage() {
         <input type="date" className="input" style={{ height: 38, width: 150 }} max={today} value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
       </div>
 
+      <Consolidated date={date} data={data} view={view} names={names} isAdmin={isAdmin} today={today} say={say} onSent={load} />
+
       <div className="plan-stats">
         <div className={`card plan-stat${view.missing.length ? ' warn' : ''}`}><div className="small muted">DPRs received</div><div className="plan-stat-v">{view.received} / {view.planned.length}</div></div>
         <div className="card plan-stat"><div className="small muted">Workers reported</div><div className="plan-stat-v">{view.workers}</div></div>
@@ -133,6 +137,60 @@ export default function DprPage() {
       )}
       {toast}
     </>
+  );
+}
+
+function Consolidated({ date, data, view, names, isAdmin, today, say, onSent }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const r = data.report;
+  const sites = view.planned.filter((p) => data.dprs.some((d) => d.project_id === p.id));
+  const extra = data.projects.filter((p) => !view.planned.includes(p) && data.dprs.some((d) => d.project_id === p.id));
+  const all = [...sites, ...extra];
+  const offSites = data.leaves.map((l) => ({ name: data.projects.find((p) => p.id === l.project_id)?.name || 'Site', reason: l.reason }));
+  const changedAfter = r && data.dprs.some((d) => new Date(d.updated_at || d.created_at) > new Date(r.sent_at));
+  const canSend = isAdmin || (date <= today && date >= addDays(today, -1));
+  const sentText = (rep) => `Sent by ${names[rep.sent_by] || 'staff'} · ${rep.sent_at ? fmtTime(rep.sent_at) : 'just now'}`;
+  const pdf = (rep) => shareDprPdf({ date, sites: all, dprs: data.dprs, names, offSites, sentText: rep ? sentText(rep) : '' });
+
+  async function send() {
+    setBusy(true); setError(null);
+    try {
+      const rep = await must(supabase.from('dpr_reports').upsert({ report_date: date }, { onConflict: 'report_date' }).select().single());
+      say(r ? 'Consolidated DPR sent again' : 'Consolidated DPR sent to admin');
+      const how = await pdf(rep);
+      if (how === 'downloaded') say('Consolidated DPR sent · PDF downloaded');
+      onSent();
+    } catch (e) { setError(e); } finally { setBusy(false); }
+  }
+  async function share() {
+    setBusy(true); setError(null);
+    try { await pdf(r); } catch (e) { setError(e); } finally { setBusy(false); }
+  }
+
+  if (!view.planned.length && !data.dprs.length) return null;
+  return (
+    <div className={`card day-approval ${r && !changedAfter ? 'ok' : 'warn'} no-print`}>
+      <Icon name={r && !changedAfter ? 'check' : 'alert'} />
+      <div style={{ flex: 1 }} className="small">
+        <b>Consolidated DPR · {dayName(date)}</b>
+        {r ? (
+          <div>{sentText(r)} · {r.sites} sites · {r.workers} workers · {r.issues ? `${r.issues} with issues` : 'no issues'}{r.times_sent > 1 ? ` · sent ${r.times_sent} times` : ''}
+            {changedAfter && <div><b>A site DPR changed after sending.</b> Send it again so the admin gets the latest.</div>}</div>
+        ) : view.missing.length ? (
+          <div>Write the DPR for every planned site first. Still missing: {view.missing.map((p) => p.name).join(', ')}.</div>
+        ) : (
+          <div>All {view.planned.length} site DPRs are in. Send the consolidated DPR to the admin.</div>
+        )}
+        <ErrorBox error={error} />
+      </div>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
+        {canSend && (!r || changedAfter) && (
+          <button className="btn small" disabled={busy || view.missing.length > 0} onClick={send}>{busy ? 'Sending…' : r ? 'Send again' : 'Send consolidated DPR'}</button>
+        )}
+        {r && <button className="btn small ghost" disabled={busy} onClick={share}>PDF / WhatsApp</button>}
+      </div>
+    </div>
   );
 }
 
