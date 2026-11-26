@@ -109,6 +109,7 @@ class Doc {
       x.font = `400 16px ${FONT}`; x.fillStyle = MUTED; x.textBaseline = 'top';
       x.fillText(this.footer, M, H - M + 10);
       x.textAlign = 'right'; x.fillText(`Page ${i + 1} of ${this.pages.length}`, W - M, H - M + 10); x.textAlign = 'left';
+      if (this.band) { const g = x.createLinearGradient(0, 0, W, 0); g.addColorStop(0, MAROON); g.addColorStop(1, '#c43a3a'); x.fillStyle = g; x.fillRect(0, H - 22, W, 22); }
     });
     return this.pages;
   }
@@ -186,6 +187,76 @@ function drawPlan({ date, projects, plans, names, summary, siteName, logo, offSi
   return doc.finish();
 }
 
+// ---------------------------------------------------------------- consolidated DPR
+const DPR_STATUS = { done: 'Done', partly: 'Partly done', not_done: 'Not done', extra: 'Extra work' };
+const labourCount = (r) => (r.labour || []).reduce((s, l) => s + (parseInt(l.count, 10) || 0), 0);
+
+function drawDpr({ date, sites, dprs, names, offSites = [], sentText = '', logo }) {
+  const doc = new Doc('Civilion Builders and Developers LLP · 12/720, Agali P.O., Palakkad 678581 · +91 8590 606 404 · civilionbuilders@gmail.com');
+  doc.band = true;
+  if (logo) { try { doc.x.drawImage(logo, W - M - 150, M - 10, 150, 150 * logo.height / logo.width); } catch { /* ignore */ } }
+  doc.text('Civilion Builders and Developers LLP', { size: 20, weight: 700, color: MAROON, gap: 4, maxW: W - 2 * M - 170 });
+  doc.text('Consolidated DPR', { size: 44, weight: 800, gap: 2 });
+  doc.text(`Daily progress report · ${longDate(date)}`, { size: 26, weight: 600, color: MUTED, gap: sentText ? 4 : 14, maxW: W - 2 * M - 170 });
+  if (sentText) doc.text(sentText, { size: 19, weight: 600, color: '#1f7a3a', gap: 12 });
+  const works = dprs.flatMap((r) => (r.works || []).filter((w) => w.work));
+  const done = works.filter((w) => w.status === 'done' || w.status === 'extra').length;
+  const workers = dprs.reduce((s, r) => s + labourCount(r), 0);
+  const withIssues = dprs.filter((r) => r.issues);
+  doc.text(`${sites.length} sites  ·  ${workers} workers  ·  ${done} of ${works.length} works done  ·  ${withIssues.length ? `${withIssues.length} with issues` : 'no issues'}`, { size: 22, weight: 600, gap: 6 });
+  if (offSites.length) doc.text(`Sites off: ${offSites.map((o) => `${o.name} (${o.reason})`).join(', ')}`, { size: 20, color: MUTED, gap: 6 });
+  doc.y += 6; doc.rule(MAROON, 3);
+
+  for (const s of sites) {
+    for (const r of dprs.filter((x) => x.project_id === s.id)) {
+      doc.ensure(160);
+      doc.text(s.name + (s.location ? `  ·  ${s.location}` : ''), { size: 28, weight: 800, gap: 2 });
+      doc.text([names[r.created_by] && `By ${names[r.created_by]}`, `${labourCount(r)} workers`, r.status === 'reviewed' ? 'Reviewed' : ''].filter(Boolean).join('  ·  '), { size: 19, color: MUTED, gap: 8 });
+      const ws = (r.works || []).filter((w) => w.work);
+      if (ws.length) {
+        doc.table(
+          [{ label: 'Work', w: 0.4 }, { label: 'Status', w: 0.17 }, { label: 'Qty / progress', w: 0.18 }, { label: 'Remarks', w: 0.25 }],
+          ws.map((w) => [w.work, DPR_STATUS[w.status] || w.status || '', w.qty || '', w.remarks || '']),
+        );
+      }
+      const lab = (r.labour || []).filter((l) => l.trade || l.count);
+      if (lab.length) doc.text(`Labour: ${lab.map((l) => `${l.trade || 'Workers'} ${l.count || 0}`).join(', ')}`, { size: 20, gap: 4 });
+      if (r.materials_received) doc.text(`Materials received: ${r.materials_received}`, { size: 20, gap: 4 });
+      if (r.materials_used) doc.text(`Materials used: ${r.materials_used}`, { size: 20, gap: 4 });
+      if (r.machinery) doc.text(`Machinery: ${r.machinery}`, { size: 20, gap: 4 });
+      if (r.issues) doc.text(`Issues: ${r.issues}`, { size: 20, weight: 600, color: '#9b1c1c', gap: 4 });
+      if (r.next_day) doc.text(`Next day: ${r.next_day}`, { size: 20, gap: 4 });
+      if (r.admin_note) doc.text(`Admin note: ${r.admin_note}`, { size: 20, weight: 600, color: MAROON, gap: 4 });
+      doc.y += 8; doc.rule();
+    }
+  }
+
+  // labour by trade across sites
+  const trades = {};
+  dprs.forEach((r) => (r.labour || []).forEach((l) => {
+    const k = (l.trade || 'Workers').trim(); const n = parseInt(l.count, 10) || 0;
+    if (!n) return;
+    const site = sites.find((s) => s.id === r.project_id)?.name || '';
+    trades[k] = trades[k] || { n: 0, sites: new Set() }; trades[k].n += n; trades[k].sites.add(site);
+  }));
+  const tk = Object.keys(trades).sort((a, b) => trades[b].n - trades[a].n);
+  if (tk.length) {
+    doc.ensure(140);
+    doc.text('Labour across sites', { size: 26, weight: 800, gap: 8 });
+    doc.table(
+      [{ label: 'Trade / team', w: 0.34 }, { label: 'Sites', w: 0.52 }, { label: 'Workers', w: 0.14, align: 'right' }],
+      [...tk.map((k) => [k, [...trades[k].sites].join(', '), String(trades[k].n)]), ['All sites', '', String(workers)]],
+      { boldLast: true },
+    );
+  }
+  if (withIssues.length) {
+    doc.ensure(120);
+    doc.text('Issues to follow up', { size: 26, weight: 800, gap: 8 });
+    withIssues.forEach((r) => doc.text(`\u2022 ${sites.find((s) => s.id === r.project_id)?.name || 'Site'}: ${r.issues}`, { size: 20, gap: 4 }));
+  }
+  return doc.finish();
+}
+
 // ---------------------------------------------------------------- minimal PDF writer
 function jpegBytes(canvas) {
   const b64 = canvas.toDataURL('image/jpeg', 0.9).split(',')[1];
@@ -248,4 +319,24 @@ export async function shareDayPlanPdf(data) {
   return 'downloaded';
 }
 
-export const _test = { buildPdf, drawPlan };
+async function shareBlob(blob, name, title) {
+  const file = new File([blob], name, { type: 'application/pdf' });
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform));
+  if (mobile && navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title }); return 'shared'; }
+    catch (e) { if (e?.name === 'AbortError') return 'cancelled'; }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return 'downloaded';
+}
+
+// Consolidated DPR: every site's report for the day in one PDF.
+export async function shareDprPdf(data) {
+  const blob = buildPdf(drawDpr({ ...data, logo: logoImg }));
+  return shareBlob(blob, `Civilion consolidated DPR ${data.date}.pdf`, `Consolidated DPR · ${longDate(data.date)}`);
+}
+
+export const _test = { buildPdf, drawPlan, drawDpr };
