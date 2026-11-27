@@ -73,10 +73,10 @@ export default function Team() {
   const signedUp = new Set(rows.map((r) => (r.email || '').toLowerCase()).filter(Boolean));
   const pending = invites.filter((i) => !signedUp.has(i.email));
 
-  const table = (items) => (
+  const table = (items, pmCol = false) => (
     <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Name</th><th>Phone / email</th><th>Role</th></tr></thead>
+        <thead><tr><th>Name</th><th>Phone / email</th><th>Role</th>{pmCol && <th title="Project manager: approves day plans, site-offs, DPRs and weekly plans for the projects where they are the PM">PM</th>}</tr></thead>
         <tbody>
           {items.map((r) => (
             <tr key={r.id}>
@@ -89,9 +89,12 @@ export default function Team() {
                   <option value="client">Client</option><option value="staff">Staff</option><option value="admin">Admin</option>
                 </select>
               </td>
+              {pmCol && (
+                <td><label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={r.is_pm === true} onChange={(e) => update(r, { is_pm: e.target.checked })} /> PM</label></td>
+              )}
             </tr>
           ))}
-          {items.length === 0 && <tr><td colSpan={3} className="muted">Nobody here.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={pmCol ? 4 : 3} className="muted">Nobody here.</td></tr>}
         </tbody>
       </table>
     </div>
@@ -145,7 +148,7 @@ export default function Team() {
 
       <input className="input" placeholder="Search name, phone or email" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search people" />
       <h2 style={{ fontSize: 18 }}>Staff &amp; admins</h2>
-      {table(staff)}
+      {table(staff, true)}
       <h2 style={{ fontSize: 18 }}>Signed-in clients</h2>
       <div className="small muted">To give a client access, open their project → <b>Clients</b> tab and add their email or mobile.</div>
       {table(clients)}
