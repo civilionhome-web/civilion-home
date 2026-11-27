@@ -42,6 +42,7 @@ export function AuthProvider({ children }) {
     isStaff: profile?.role === 'staff' || profile?.role === 'admin',
     isAdmin: profile?.role === 'admin',
     isSuper: profile?.role === 'admin' && profile?.is_super === true,
+    isPm: profile?.is_pm === true && profile?.role !== 'client',
     loading,
     refreshProfile: () => loadProfile(session),
     signOut: async () => { await supabase.auth.signOut(); localStorage.removeItem('civ_project'); },
