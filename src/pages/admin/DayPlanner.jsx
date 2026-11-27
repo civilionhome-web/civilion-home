@@ -272,6 +272,8 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
+  const [msg, setMsg] = useState(leave?.client_message || '');
+  useEffect(() => { setMsg(leave?.client_message || ''); }, [leave?.id, leave?.client_message]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const run = async (fn, msg) => {
@@ -283,12 +285,14 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
     if (!reason.trim()) return setError(new Error('Write the reason the site is off.'));
     if (!isAdmin && approved && !window.confirm(`${longDate(date)} is already approved. If you send this, the super admin must approve the day again before you can make the PDF. Send it?`)) return;
     run(() => (leave
-      ? must(supabase.from('site_leaves').update({ reason: reason.trim() }).eq('id', leave.id))
-      : must(supabase.from('site_leaves').insert({ project_id: project.id, leave_date: date, reason: reason.trim() }))),
+      ? must(supabase.from('site_leaves').update({ reason: reason.trim(), client_message: msg.trim() }).eq('id', leave.id))
+      : must(supabase.from('site_leaves').insert({ project_id: project.id, leave_date: date, reason: reason.trim(), client_message: msg.trim() }))),
     isAdmin ? 'Site marked off' : 'Site-off request sent to admin');
   };
-  const decide = (status) => run(() => must(supabase.from('site_leaves').update({ status, admin_note: note.trim() }).eq('id', leave.id)),
-    status === 'approved' ? 'Site off approved' : 'Site off rejected');
+  const decide = (status) => run(() => must(supabase.from('site_leaves').update({ status, admin_note: note.trim(), ...(status === 'approved' ? { client_message: msg.trim() } : {}) }).eq('id', leave.id)),
+    status === 'approved' ? 'Site off approved · client notified' : 'Site off rejected');
+  const resend = () => run(() => must(supabase.from('site_leaves').update({ client_message: msg.trim() }).eq('id', leave.id)), 'Client message updated and sent');
+  const clientText = (leave?.client_message || '').trim() || leave?.reason;
   const remove = () => { if (window.confirm('Remove this site-off entry?')) run(() => must(supabase.from('site_leaves').delete().eq('id', leave.id)), 'Removed'); };
   const mine = leave && leave.created_by === userId;
 
@@ -300,6 +304,8 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
           {LEAVE_REASONS.map((r) => <button type="button" key={r} className={`chip${reason === r ? ' on' : ''}`} onClick={() => setReason(r)}>{r}</button>)}
         </div>
         <input className="input" placeholder="Reason (you can add details)" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <input className="input" placeholder="Message to client (optional, e.g. Concrete curing in progress)" value={msg} onChange={(e) => setMsg(e.target.value)} />
+        <div className="small muted">The client is told once the site off is approved. If the message is empty, the reason is sent.</div>
         <ErrorBox error={error} />
         <div className="row" style={{ gap: 6 }}>
           <button className="btn small" disabled={busy}>{busy ? 'Saving…' : isAdmin ? 'Mark site off' : 'Send to admin'}</button>
@@ -310,7 +316,7 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
   }
   if (!leave) {
     return (!past || isAdmin) ? (
-      <button className="btn small ghost no-print" style={{ alignSelf: 'flex-start' }} onClick={() => { setReason(''); setOpen(true); }}>Mark site off (no work)</button>
+      <button className="btn small ghost no-print" style={{ alignSelf: 'flex-start' }} onClick={() => { setReason(''); setMsg(''); setOpen(true); }}>Mark site off (no work)</button>
     ) : null;
   }
   const label = { pending: 'Site-off requested', approved: 'Site off', rejected: 'Site-off request rejected' }[leave.status];
@@ -318,9 +324,11 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
     <div className={`leave-box ${leave.status}`}>
       <div><b>{label}:</b> {leave.reason}</div>
       <div className="small muted">By {author || 'staff'}{leave.decided_at ? ` · ${leave.status === 'approved' ? 'approved' : 'rejected'} ${fmtTime(leave.decided_at)}` : ''}</div>
+      {leave.status !== 'rejected' && <div className="small"><b>{leave.status === 'approved' ? 'Client was told:' : 'Client will be told:'}</b> {clientText}</div>}
       {leave.admin_note && <div className="small"><b>Admin:</b> {leave.admin_note}</div>}
       {isAdmin && leave.status === 'pending' && (
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+          <input className="input" style={{ height: 38, fontSize: 14 }} placeholder={`Message to client (empty = "${leave.reason}")`} value={msg} onChange={(e) => setMsg(e.target.value)} />
           <input className="input" style={{ height: 38, fontSize: 14 }} placeholder="Note to staff (optional)" value={note} onChange={(e) => setNote(e.target.value)} />
           <div className="row" style={{ gap: 6 }}>
             <button className="btn small" disabled={busy} onClick={() => decide('approved')}>Approve site off</button>
@@ -329,11 +337,17 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
         </div>
       )}
       <div className="row no-print" style={{ gap: 6, marginTop: 4 }}>
+        {isAdmin && leave.status === 'approved' && !past && (
+          <>
+            <input className="input" style={{ height: 34, fontSize: 13, flex: 1, minWidth: 180 }} placeholder="Change message to client" value={msg} onChange={(e) => setMsg(e.target.value)} />
+            {msg.trim() !== (leave.client_message || '').trim() && <button className="btn small" disabled={busy} onClick={resend}>Send to client</button>}
+          </>
+        )}
         {isAdmin && leave.status === 'approved' && (
           <button className="btn small ghost" disabled={busy} onClick={() => decide('rejected')}>Cancel site off</button>
         )}
         {mine && !past && leave.status !== 'approved' && (
-          <button className="btn small ghost" onClick={() => { setReason(leave.reason); setOpen(true); }}>{leave.status === 'rejected' ? 'Request again' : 'Edit reason'}</button>
+          <button className="btn small ghost" onClick={() => { setReason(leave.reason); setMsg(leave.client_message || ''); setOpen(true); }}>{leave.status === 'rejected' ? 'Request again' : 'Edit reason'}</button>
         )}
         {(isAdmin || (mine && !past && leave.status !== 'approved')) && <button className="btn small danger" disabled={busy} onClick={remove}>Remove</button>}
       </div>
