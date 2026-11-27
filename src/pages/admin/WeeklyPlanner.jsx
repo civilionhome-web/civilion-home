@@ -20,7 +20,7 @@ const weekLabel = (w) => `${fmt(w)} – ${fmt(addDays(w, 6))}`;
 const defaultWeek = () => { const t = todayStr(); const wd = new Date(t + 'T00:00:00').getDay(); return addDays(mondayOf(t), [5, 6, 0].includes(wd) ? 7 : 0); };
 
 export default function WeeklyPlanner() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isPm, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const asked = params.get('week');
   const valid = (w) => /^\d{4}-\d{2}-\d{2}$/.test(w || '');
@@ -38,7 +38,7 @@ export default function WeeklyPlanner() {
   const load = useCallback(async () => {
     setError(null);
     const [pr, wp] = await Promise.all([
-      supabase.from('projects').select('id, name, location, archived').order('created_at'),
+      supabase.from('projects').select('id, name, location, archived, pm_id').order('created_at'),
       supabase.from('weekly_plans').select('*').eq('week_start', week).order('created_at'),
     ]);
     if (pr.error || wp.error) setError(pr.error || wp.error);
@@ -95,6 +95,7 @@ export default function WeeklyPlanner() {
 
       <div className="plan-board">
         {projects.map((p) => {
+          const here = isAdmin || (isPm && p.pm_id === user?.id);
           const list = plans.filter((x) => x.project_id === p.id);
           const mine = list.find((x) => x.created_by === user?.id);
           const isEditing = editing && editing.project.id === p.id;
@@ -105,14 +106,14 @@ export default function WeeklyPlanner() {
                 {!list.length && <span className="pill upcoming">Not planned</span>}
               </div>
               {list.map((plan) => (isEditing && editing.plan?.id === plan.id ? null : (
-                <WeekView key={plan.id} plan={plan} isAdmin={isAdmin} author={names[plan.created_by]}
-                  canEdit={isAdmin || (!past && plan.created_by === user?.id)} onEdit={() => setEditing({ project: p, plan })} onChanged={load} say={say} />
+                <WeekView key={plan.id} plan={plan} isAdmin={here} author={names[plan.created_by]}
+                  canEdit={here || (!past && plan.created_by === user?.id)} onEdit={() => setEditing({ project: p, plan })} onChanged={load} say={say} />
               )))}
               {isEditing ? (
-                <WeekForm project={p} week={week} plan={editing.plan} isAdmin={isAdmin} say={say}
+                <WeekForm project={p} week={week} plan={editing.plan} isAdmin={here} say={say}
                   author={editing.plan && editing.plan.created_by !== user?.id ? names[editing.plan.created_by] || 'the staff member' : null}
                   onDone={done} onCancel={() => setEditing(null)} />
-              ) : (!past || isAdmin) && (!mine || isAdmin) && (
+              ) : (!past || here) && (!mine || here) && (
                 <button className="btn small outline no-print" style={{ alignSelf: 'flex-start' }} onClick={() => setEditing({ project: p, plan: null })}>
                   <Icon name="plus" size={18} /> {list.length ? 'Add another plan' : 'Plan this week'}
                 </button>
