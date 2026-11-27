@@ -89,6 +89,37 @@ const FIELDS = [
   ['pm_phone', 'PM WhatsApp number (with country code)', 'tel', '919876543210'],
 ];
 
+function PmPicker({ project, reloadProject, say }) {
+  const { isAdmin } = useAuth();
+  const [pms, setPms] = useState([]);
+  const [error, setError] = useState(null);
+  useEffect(() => { supabase.from('profiles').select('id, full_name, phone').eq('is_pm', true).order('full_name').then(({ data }) => setPms(data || [])); }, []);
+  const current = pms.find((x) => x.id === project.pm_id);
+  async function choose(e) {
+    const pm = pms.find((x) => x.id === e.target.value);
+    setError(null);
+    const patch = pm ? { pm_id: pm.id, pm_name: pm.full_name || project.pm_name, pm_phone: pm.phone || project.pm_phone } : { pm_id: null };
+    const { error: er } = await supabase.from('projects').update(patch).eq('id', project.id);
+    if (er) setError(er); else { say(pm ? `${pm.full_name} is now the PM` : 'PM removed'); reloadProject(); }
+  }
+  return (
+    <div className="card" style={{ gap: 8 }}>
+      <div className="between">
+        <div><div className="card-title">Project manager (PM)</div>
+          <div className="small muted">The PM approves this site's day plans, site-offs, hindrances, DPRs and weekly plans, and gets its alerts.</div></div>
+      </div>
+      {isAdmin ? (
+        <select className="select" value={project.pm_id || ''} onChange={choose} style={{ maxWidth: 320 }}>
+          <option value="">— No PM —</option>
+          {pms.map((x) => <option key={x.id} value={x.id}>{x.full_name || 'PM'}</option>)}
+        </select>
+      ) : <div><b>{current?.full_name || project.pm_name || 'No PM set'}</b></div>}
+      {isAdmin && !pms.length && <div className="small muted">No PMs yet. Tick “PM” for a team member on the Team page.</div>}
+      <ErrorBox error={error} />
+    </div>
+  );
+}
+
 function Overview({ project, reloadProject, say }) {
   const { isAdmin } = useAuth();
   const nav = useNavigate();
@@ -129,6 +160,8 @@ function Overview({ project, reloadProject, say }) {
   }
 
   return (
+    <>
+    <PmPicker project={project} reloadProject={reloadProject} say={say} />
     <form className="card" onSubmit={save} style={{ gap: 14 }}>
       <div className="form-grid">
         {FIELDS.map(([k, label, type, extra]) => (
@@ -156,5 +189,6 @@ function Overview({ project, reloadProject, say }) {
         {isAdmin && <button type="button" className="btn danger" onClick={del}>Delete project</button>}
       </div>
     </form>
+    </>
   );
 }
