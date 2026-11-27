@@ -324,7 +324,7 @@ function SiteLeave({ project, date, past, leave, isAdmin, userId, author, say, o
     <div className={`leave-box ${leave.status}`}>
       <div><b>{label}:</b> {leave.reason}</div>
       <div className="small muted">By {author || 'staff'}{leave.decided_at ? ` · ${leave.status === 'approved' ? 'approved' : 'rejected'} ${fmtTime(leave.decided_at)}` : ''}</div>
-      {leave.status !== 'rejected' && <div className="small"><b>{leave.status === 'approved' ? 'Client was told:' : 'Client will be told:'}</b> {clientText}</div>}
+      {leave.status !== 'rejected' && <div className="small"><b>Message to client:</b> {clientText}</div>}
       {leave.admin_note && <div className="small"><b>Admin:</b> {leave.admin_note}</div>}
       {isAdmin && leave.status === 'pending' && (
         <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
