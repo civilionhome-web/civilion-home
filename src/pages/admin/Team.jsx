@@ -13,7 +13,7 @@ function inviteText(name) {
 }
 
 export default function Team() {
-  const { user } = useAuth();
+  const { user, isSuper, isAdmin } = useAuth();
   const [rows, setRows] = useState(null);
   const [invites, setInvites] = useState([]);
   const [q, setQ] = useState('');
@@ -54,6 +54,17 @@ export default function Team() {
     load();
   }
 
+  async function removeUser(r) {
+    const who = r.full_name || r.email || (r.phone ? `+${r.phone}` : 'this user');
+    const extra = r.role === 'client' ? ' They will also be taken off every project\'s client list.' : ' Their staff invite is cancelled too.';
+    if (!window.confirm(`Delete ${who}?\n\nTheir login is removed for good and they can no longer open the app.${extra}\nPlans, logs, DPRs and messages they wrote stay, without their name.`)) return;
+    setError(null);
+    const { data, error: e } = await supabase.rpc('delete_user', { target: r.id });
+    if (e) { setError(e); return; }
+    say(data || 'Deleted');
+    load();
+  }
+
   async function cancelInvite(inv) {
     if (!window.confirm(`Cancel the invite for ${inv.email}?`)) return;
     const { error: e } = await supabase.from('staff_invites').delete().eq('email', inv.email);
@@ -76,7 +87,7 @@ export default function Team() {
   const table = (items, pmCol = false) => (
     <div className="table-wrap">
       <table className="table">
-        <thead><tr><th>Name</th><th>Phone / email</th><th>Role</th>{pmCol && <th title="Project manager: approves day plans, site-offs, DPRs and weekly plans for the projects where they are the PM">PM</th>}</tr></thead>
+        <thead><tr><th>Name</th><th>Phone / email</th><th>Role</th>{pmCol && <th title="Project manager: approves day plans, site-offs, DPRs and weekly plans for the projects where they are the PM">PM</th>}<th aria-label="Delete" /></tr></thead>
         <tbody>
           {items.map((r) => (
             <tr key={r.id}>
@@ -92,9 +103,14 @@ export default function Team() {
               {pmCol && (
                 <td><label className="row small" style={{ gap: 6 }}><input type="checkbox" checked={r.is_pm === true} onChange={(e) => update(r, { is_pm: e.target.checked })} /> PM</label></td>
               )}
+              <td style={{ textAlign: 'right' }}>
+                {isAdmin && r.id !== user.id && !r.is_super && (r.role !== 'admin' || isSuper)
+                  ? <button className="btn small danger" onClick={() => removeUser(r)}>Delete</button>
+                  : <span className="small muted">{r.id === user.id ? 'You' : r.is_super ? 'Super admin' : ''}</span>}
+              </td>
             </tr>
           ))}
-          {items.length === 0 && <tr><td colSpan={pmCol ? 4 : 3} className="muted">Nobody here.</td></tr>}
+          {items.length === 0 && <tr><td colSpan={pmCol ? 5 : 4} className="muted">Nobody here.</td></tr>}
         </tbody>
       </table>
     </div>
