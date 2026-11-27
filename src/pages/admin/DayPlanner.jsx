@@ -20,7 +20,7 @@ const blankTask = () => ({ work: '', team: '', workers: '' });
 const defaultDay = () => (Number(new Date().toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: 'Asia/Kolkata' })) < 12 ? todayStr() : tomorrowStr());
 
 export default function DayPlanner() {
-  const { isAdmin, isSuper, user } = useAuth();
+  const { isAdmin, isSuper, isPm, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const asked = params.get('date');
   const [date, setDate] = useState(() => (/^\d{4}-\d{2}-\d{2}$/.test(asked || '') ? asked : defaultDay()));
@@ -42,7 +42,7 @@ export default function DayPlanner() {
   const load = useCallback(async () => {
     setError(null);
     const [pr, pl, wk, lv, wl, ap, ch, lk] = await Promise.all([
-      supabase.from('projects').select('id, name, location, archived').order('created_at'),
+      supabase.from('projects').select('id, name, location, archived, pm_id').order('created_at'),
       supabase.from('day_plans').select('*').eq('plan_date', date).order('created_at'),
       supabase.from('day_plans').select('id, project_id, plan_date, status').gte('plan_date', today).lte('plan_date', addDays(today, 6)),
       supabase.from('site_leaves').select('*').eq('leave_date', date),
@@ -166,6 +166,7 @@ export default function DayPlanner() {
 
       <div className="plan-board">
         {projects.map((p) => {
+          const here = isAdmin || (isPm && p.pm_id === user?.id);
           const list = plansFor(p.id);
           const mine = list.find((x) => x.created_by === user?.id);
           const isEditing = editing && editing.project.id === p.id;
@@ -174,28 +175,28 @@ export default function DayPlanner() {
           return (
             <section key={p.id} className={`card plan-site${off ? ' site-off' : ''}`}>
               <div className="between">
-                <div><div className="card-title">{p.name}</div><div className="small muted">{p.location || ''}</div></div>
+                <div><div className="card-title">{p.name}</div><div className="small muted">{p.location || ''}{p.pm_id ? ` · PM: ${names[p.pm_id] || '—'}` : ''}</div></div>
                 {off ? <span className="pill">Site off</span> : !list.length && !leave && <span className="pill upcoming">{past ? 'No plan' : 'Not planned'}</span>}
               </div>
-              <SiteLeave project={p} date={date} past={past} approved={!!approval} leave={leave} isAdmin={isAdmin} userId={user?.id}
+              <SiteLeave project={p} date={date} past={past} approved={!!approval} leave={leave} isAdmin={here} userId={user?.id}
                 author={leave ? names[leave.created_by] : null} say={say} onChanged={load} />
               {!off && (
                 <SiteChanges project={p} date={date} today={today} changes={changes} projects={projects} siteName={siteName}
-                  names={names} isAdmin={isAdmin} userId={user?.id} plans={plans} say={say} onChanged={load} />
+                  names={names} isAdmin={here} userId={user?.id} plans={plans} say={say} onChanged={load} />
               )}
 
               {list.map((plan) => (isEditing && editing.plan?.id === plan.id ? null : (
-                <PlanView key={plan.id} plan={plan} isAdmin={isAdmin} isSuper={isSuper} author={names[plan.created_by]}
-                  canEdit={isAdmin || (!past && plan.created_by === user?.id)}
+                <PlanView key={plan.id} plan={plan} isAdmin={here} isSuper={isSuper} author={names[plan.created_by]}
+                  canEdit={here || (!past && plan.created_by === user?.id)}
                   onEdit={() => setEditing({ project: p, plan })} onChanged={() => { load(); }} say={say} />
               )))}
 
               {isEditing ? (
-                <PlanForm project={p} date={date} plan={editing.plan} isAdmin={isAdmin} say={say} approved={!!approval}
+                <PlanForm project={p} date={date} plan={editing.plan} isAdmin={here} say={say} approved={!!approval}
                   author={editing.plan && editing.plan.created_by !== user?.id ? names[editing.plan.created_by] || 'the staff member' : null}
                   onDone={done} onCancel={() => setEditing(null)} />
-              ) : (!past || isAdmin) && (!mine || isAdmin) && (isAdmin || !list.length || !mine) && (
-                <button className="btn small outline no-print" onClick={() => setEditing({ project: p, plan: isAdmin ? null : mine || null })}>
+              ) : (!past || here) && (!mine || here) && (here || !list.length || !mine) && (
+                <button className="btn small outline no-print" onClick={() => setEditing({ project: p, plan: here ? null : mine || null })}>
                   <Icon name="plus" size={18} /> {list.length ? 'Add another plan' : `Plan ${dayName(date).toLowerCase() === 'tomorrow' ? 'tomorrow' : 'this day'}`}
                 </button>
               )}
@@ -249,7 +250,7 @@ function DayApproval({ date, past, isAdmin, approval, names, say, onChanged, mis
     return (
       <div className="card day-approval warn no-print">
         <Icon name="alert" />
-        <div className="small"><b>{label} · {day} · waiting for admin approval</b><div>The “{pdfHeading(date)}” PDF unlocks once the admin approves.</div></div>
+        <div className="small"><b>{label} · {day} · waiting for approval</b><div>The “{pdfHeading(date)}” PDF unlocks by itself once every site is approved by its PM (or the admin).{lock ? ' This day was changed after approval, so the super admin must approve it again.' : ''}</div></div>
       </div>
     );
   }
