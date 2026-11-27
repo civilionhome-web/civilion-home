@@ -30,6 +30,8 @@ export default function ProjectsList() {
   const nav = useNavigate();
   const { isAdmin } = useAuth();
   const [tmr, setTmr] = useState(null);
+  const [pms, setPms] = useState([]);
+  const [pmId, setPmId] = useState('');
 
   useEffect(() => {
     supabase.from('projects').select('*').order('created_at', { ascending: false }).then(({ data, error: e }) => {
@@ -37,6 +39,7 @@ export default function ProjectsList() {
       setRows(data || []);
     });
     loadAllVariations().then(setVo);
+    supabase.from('profiles').select('id, full_name, phone').eq('is_pm', true).order('full_name').then(({ data }) => setPms(data || []));
     Promise.all([
       supabase.from('day_plans').select('project_id, status').eq('plan_date', tomorrowStr()),
       supabase.from('site_leaves').select('project_id, status').eq('leave_date', tomorrowStr()).neq('status', 'rejected'),
@@ -47,7 +50,9 @@ export default function ProjectsList() {
     e.preventDefault();
     setBusy(true); setError(null);
     try {
-      const p = await must(supabase.from('projects').insert({ name: name.trim(), location: location.trim(), stage_label: DEFAULT_STAGES[0] }).select().single());
+      const pm = pms.find((x) => x.id === pmId);
+      const p = await must(supabase.from('projects').insert({ name: name.trim(), location: location.trim(), stage_label: DEFAULT_STAGES[0],
+        ...(pm ? { pm_id: pm.id, pm_name: pm.full_name || '', pm_phone: pm.phone || '' } : {}) }).select().single());
       await must(supabase.from('stages').insert(DEFAULT_STAGES.map((s, i) => ({ project_id: p.id, position: i, name: s, status: i === 0 ? 'current' : 'upcoming' }))));
       nav(`/admin/project/${p.id}`);
     } catch (err) { setError(err); setBusy(false); }
@@ -108,6 +113,15 @@ export default function ProjectsList() {
           <label className="field"><span>Location</span>
             <input className="input" placeholder="Mannarkkad" value={location} onChange={(e) => setLocation(e.target.value)} />
           </label>
+          {isAdmin && (
+            <label className="field"><span>Project manager (PM)</span>
+              <select className="select" value={pmId} onChange={(e) => setPmId(e.target.value)}>
+                <option value="">— Choose PM —</option>
+                {pms.map((x) => <option key={x.id} value={x.id}>{x.full_name || 'PM'}</option>)}
+              </select>
+              {!pms.length && <span className="small muted">No PMs yet. Tick “PM” for a team member on the Team page.</span>}
+            </label>
+          )}
           <button className="btn" disabled={busy}>{busy ? 'Creating…' : 'Create project'}</button>
         </form>
       </div>
