@@ -15,7 +15,7 @@ const labourTotal = (r) => (r.labour || []).reduce((s, l) => s + (parseInt(l.cou
 const fmtTime = (t) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata' });
 
 export default function DprPage() {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin, isPm, user } = useAuth();
   const [params, setParams] = useSearchParams();
   const asked = params.get('date');
   const [date, setDate] = useState(() => (/^\d{4}-\d{2}-\d{2}$/.test(asked || '') ? asked : todayStr()));
@@ -30,7 +30,7 @@ export default function DprPage() {
   const load = useCallback(async () => {
     setError(null);
     const [pr, dp, rp, lv, ch, cr] = await Promise.all([
-      supabase.from('projects').select('id, name, location, archived').order('created_at'),
+      supabase.from('projects').select('id, name, location, archived, pm_id').order('created_at'),
       supabase.from('day_plans').select('*').eq('plan_date', date),
       supabase.from('dprs').select('*').eq('report_date', date).order('created_at'),
       supabase.from('site_leaves').select('project_id, reason, status').eq('leave_date', date).eq('status', 'approved'),
@@ -62,11 +62,12 @@ export default function DprPage() {
   if (!data) return <Spinner />;
   const done = () => { setEditing(null); load(); };
   const card = (p) => {
+    const here = isAdmin || (isPm && p.pm_id === user?.id);
     const list = data.dprs.filter((r) => r.project_id === p.id);
     const mine = list.find((r) => r.created_by === user?.id);
     const plan = data.plans.filter((x) => x.project_id === p.id);
     const isEditing = editing && editing.project.id === p.id;
-    const canWrite = isAdmin || (date <= today && date >= addDays(today, -1));
+    const canWrite = here || (date <= today && date >= addDays(today, -1));
     return (
       <section key={p.id} className="card plan-site">
         <div className="between">
@@ -77,15 +78,15 @@ export default function DprPage() {
           <div className="small muted">Planned: {plan.flatMap((x) => (x.tasks || []).map((t) => t.work).filter(Boolean)).join(' · ') || '—'}</div>
         )}
         {list.map((r) => (isEditing && editing.dpr?.id === r.id ? null : (
-          <DprView key={r.id} r={r} isAdmin={isAdmin} author={names[r.created_by]}
-            canEdit={isAdmin || (r.created_by === user?.id && date >= addDays(today, -1))}
+          <DprView key={r.id} r={r} isAdmin={here} author={names[r.created_by]}
+            canEdit={here || (r.created_by === user?.id && date >= addDays(today, -1))}
             onEdit={() => setEditing({ project: p, dpr: r })} onChanged={load} say={say} />
         )))}
         {isEditing ? (
-          <DprForm project={p} date={date} dpr={editing.dpr} plans={plan} isAdmin={isAdmin} say={say}
+          <DprForm project={p} date={date} dpr={editing.dpr} plans={plan} isAdmin={here} say={say}
             changes={data.changes.filter((c) => c.project_id === p.id || c.to_project_id === p.id)} siteName={siteName}
             onDone={done} onCancel={() => setEditing(null)} />
-        ) : canWrite && (!mine || isAdmin) && (
+        ) : canWrite && (!mine || here) && (
           <button className="btn small outline no-print" style={{ alignSelf: 'flex-start' }} onClick={() => setEditing({ project: p, dpr: null })}>
             <Icon name="plus" size={18} /> {list.length ? 'Add another DPR' : 'Write DPR'}
           </button>
